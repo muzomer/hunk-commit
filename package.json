@@ -1,0 +1,20 @@
+{
+  "name": "hunk-jj-stage",
+  "version": "0.1.0",
+  "description": "Mark hunks while reviewing in Hunk and move them into a Jujutsu revision without leaving the review",
+  "license": "MIT",
+  "type": "module",
+  "hunk": {
+    "extensions": ["./index.ts"],
+    "apiVersion": 8
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "hunkdiff": "^0.20.0",
+    "typescript": "^5"
+  }
+}
