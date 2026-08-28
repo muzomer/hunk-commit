@@ -9,11 +9,17 @@ export interface MarkHighlight {
 }
 
 /**
- * Paint every line of every marked hunk.
+ * Paint every line of a marked hunk, but not all of them the same way.
  *
- * Context lines are painted along with the changed ones. Marking is a
- * statement about the whole hunk, and painting only its `+`/`-` lines left a
- * marked hunk looking half-marked — a stripe of tinted lines with untinted
+ * Two things are worth seeing and they are not the same thing: which lines are
+ * about to move, and how far the hunk you marked reaches. Changed lines carry
+ * the mark across their full width, because those are the lines that move.
+ * Context lines carry it only in the first couple of columns — enough to draw
+ * a continuous edge down the hunk, without claiming that a line which stays
+ * put is going anywhere.
+ *
+ * Painting nothing at all on context lines was the first attempt, and it left
+ * a marked hunk looking half-marked: a stripe of tinted lines with untinted
  * ones between them, which reads as a bug rather than as a boundary.
  *
  * A context line is addressed on both sides, since it exists on both and a
@@ -34,6 +40,8 @@ export function buildMarkHighlights(patch: FilePatch, mark: FileMark | undefined
   }
 
   const highlights: MarkHighlight[] = [];
+  /** Columns of a context line that carry the mark, drawing the hunk's edge. */
+  const EDGE_WIDTH = 2;
 
   for (const hunk of patch.hunks) {
     if (mark.kind === "hunks" && !mark.hunks.has(hunk.index)) {
@@ -53,8 +61,9 @@ export function buildMarkHighlights(patch: FilePatch, mark: FileMark | undefined
         highlights.push({ side: "old", line: oldLine, range });
         oldLine += 1;
       } else {
-        highlights.push({ side: "old", line: oldLine, range });
-        highlights.push({ side: "new", line: newLine, range });
+        const edge = [0, Math.min(range[1], EDGE_WIDTH)] as const;
+        highlights.push({ side: "old", line: oldLine, range: edge });
+        highlights.push({ side: "new", line: newLine, range: edge });
         oldLine += 1;
         newLine += 1;
       }

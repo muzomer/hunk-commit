@@ -20,25 +20,26 @@ describe("buildMarkHighlights", () => {
     expect(buildMarkHighlights(patch, undefined)).toEqual([]);
   });
 
-  test("paints a marked hunk end to end, context included", () => {
+  test("paints changed lines fully and context lines only at the edge", () => {
     expect(buildMarkHighlights(patch, { kind: "hunks", hunks: new Set([0]) })).toEqual([
-      // "alpha" — context, so it belongs to both sides.
-      { side: "old", line: 1, range: [0, 5] },
-      { side: "new", line: 1, range: [0, 5] },
+      // "alpha" — context, so an edge mark on both sides.
+      { side: "old", line: 1, range: [0, 2] },
+      { side: "new", line: 1, range: [0, 2] },
+      // "beta" / "BETA" — the lines that actually move, marked full width.
       { side: "old", line: 2, range: [0, 4] },
       { side: "new", line: 2, range: [0, 4] },
-      { side: "old", line: 3, range: [0, 5] },
-      { side: "new", line: 3, range: [0, 5] },
+      { side: "old", line: 3, range: [0, 2] },
+      { side: "new", line: 3, range: [0, 2] },
     ]);
   });
 
   test("tracks line numbers across context when a hunk only adds", () => {
     expect(buildMarkHighlights(patch, { kind: "hunks", hunks: new Set([1]) })).toEqual([
-      { side: "old", line: 10, range: [0, 5] },
-      { side: "new", line: 10, range: [0, 5] },
+      { side: "old", line: 10, range: [0, 2] },
+      { side: "new", line: 10, range: [0, 2] },
       { side: "new", line: 11, range: [0, 8] },
-      { side: "old", line: 11, range: [0, 7] },
-      { side: "new", line: 12, range: [0, 7] },
+      { side: "old", line: 11, range: [0, 2] },
+      { side: "new", line: 12, range: [0, 2] },
     ]);
   });
 
@@ -55,8 +56,8 @@ describe("buildMarkHighlights", () => {
 `);
 
     expect(buildMarkHighlights(withBlank, { kind: "whole" })).toEqual([
-      { side: "old", line: 1, range: [0, 5] },
-      { side: "new", line: 1, range: [0, 5] },
+      { side: "old", line: 1, range: [0, 2] },
+      { side: "new", line: 1, range: [0, 2] },
       { side: "new", line: 2, range: [0, 1] },
     ]);
   });
