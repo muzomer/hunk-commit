@@ -20,7 +20,7 @@ export function readTargetSetting(
   }
 
   if (typeof configured !== "string" || configured.trim() === "") {
-    log(`Ignoring [extension.jj-stage] target: expected a revset string, got ${typeof configured}`);
+    log(`Ignoring [extension.hunk-stage] target: expected a revset string, got ${typeof configured}`);
     return DEFAULT_TARGET;
   }
 

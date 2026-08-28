@@ -1,20 +1,9 @@
-import { join } from "node:path";
-import { writeFile } from "node:fs/promises";
-import { parseDocument } from "../patch/document";
+import { parseDocument, type Document } from "../patch/document";
 import { findDisagreement, type HostHunk } from "../patch/agreement";
 import { parseFilePatch, type FilePatch } from "../patch/parse";
 import { findStaleHunk } from "../patch/select";
-import type { Jj } from "../jj/repository";
-import { buildSquashArgs, renderToolConfig } from "../jj/tool";
-import {
-  disposeFile,
-  rebuildOperation,
-  requiresWorkingCopyCheck,
-  revertOperations,
-  type FileMark,
-  type StageOperation,
-} from "./plan";
-import { createStageDirectory } from "./stageDirectory";
+import type { StagedEntry, StagingBackend } from "./backend";
+import { disposeFile, requiresWorkingCopyCheck, type FileMark } from "./plan";
 
 /** One file of the review, as staging needs to see it. */
 export interface ReviewedFile {
@@ -28,19 +17,17 @@ export interface StageRequest {
   readonly files: readonly ReviewedFile[];
   /** Marks by file id. Files absent from the map contribute nothing. */
   readonly marks: ReadonlyMap<string, FileMark>;
-  /** The revision the marked hunks move into. */
-  readonly into: string;
 }
 
 /**
  * Everything staging needs from the outside world.
  *
- * Both members already know which workspace they belong to, which is why the
- * root itself is not passed around: `jj` runs in it, and reads resolve against
- * it.
+ * The backend already knows its destination and how to reach it, which is why
+ * no repository root is passed around: reads resolve against the workspace the
+ * caller opened, and the backend runs inside it.
  */
 export interface StageEnvironment {
-  readonly jj: Jj;
+  readonly backend: StagingBackend;
   /** Read one working-copy file, by path relative to the workspace root. */
   readWorkingCopyFile(path: string): Promise<string>;
 }
@@ -66,62 +53,52 @@ export function countMarkedHunks(patch: FilePatch, mark: FileMark): number {
 }
 
 /**
- * Move the marked hunks into a revision.
+ * Stage the marked hunks.
  *
- * The sequence is deliberate: everything that can refuse does so before
- * anything is written, so a refusal always leaves the repository exactly as it
- * was. Once `jj` is invoked the operation is atomic and reversible with
- * `jj undo`, which is the only irreversible-looking step and is not one.
+ * Every file is checked before any of them is acted on, so a refusal anywhere
+ * means the repository was never touched. Only once the whole review has
+ * passed does the backend get to run — and it runs once, so its own work is a
+ * single operation rather than a sequence that could half-finish.
  */
 export async function stageMarkedHunks(
   request: StageRequest,
   environment: StageEnvironment,
 ): Promise<StageOutcome> {
-  const operations: StageOperation[] = [];
-  const staged: StagedTotals = { files: 0, hunks: 0 };
+  const entries: StagedEntry[] = [];
+  const staged = { files: 0, hunks: 0 };
 
   for (const file of request.files) {
-    const planned = await planFile(file, request.marks.get(file.id), environment);
+    const mark = request.marks.get(file.id);
+    const checked = await checkFile(file, mark, environment);
 
-    if (planned.kind !== "planned") {
-      return planned;
+    if ("kind" in checked) {
+      return checked;
     }
 
-    operations.push(...planned.operations);
-    staged.files += planned.stagedFiles;
-    staged.hunks += planned.stagedHunks;
+    entries.push(checked.entry);
+
+    if (mark && checked.entry.disposition.kind !== "revert") {
+      staged.files += 1;
+      staged.hunks += countMarkedHunks(checked.entry.patch, mark);
+    }
   }
 
-  await runSquash(operations, request.into, environment);
-  return { kind: "staged", files: staged.files, hunks: staged.hunks };
-}
-
-/** Running totals for the "staged N hunks in M files" summary. */
-interface StagedTotals {
-  files: number;
-  hunks: number;
-}
-
-/** One file's contribution, once it is known that nothing about it refuses. */
-interface PlannedFile {
-  readonly kind: "planned";
-  readonly operations: readonly StageOperation[];
-  readonly stagedFiles: number;
-  readonly stagedHunks: number;
+  await environment.backend.stage(entries);
+  return { kind: "staged", ...staged };
 }
 
 /**
- * Decide what one reviewed file contributes, refusing rather than guessing.
+ * Check one file and decide its fate, refusing rather than guessing.
  *
- * The order matters: the two checks that can refuse both run before any
- * operation is produced, so a refusal anywhere means nothing was prepared for
- * any file.
+ * Both refusals live here because both are questions about whether the review
+ * still describes reality — one against Hunk's own parse, one against the
+ * bytes on disk.
  */
-async function planFile(
+async function checkFile(
   file: ReviewedFile,
   mark: FileMark | undefined,
   environment: StageEnvironment,
-): Promise<PlannedFile | StageRefusal> {
+): Promise<{ entry: StagedEntry } | StageRefusal> {
   const patch = parseFilePatch(file.patchText);
 
   const disagreement = findDisagreement(patch, file.hostHunks);
@@ -131,51 +108,21 @@ async function planFile(
 
   const disposition = disposeFile(patch, mark);
 
-  if (disposition.kind === "revert") {
-    return { kind: "planned", operations: revertOperations(patch), stagedFiles: 0, stagedHunks: 0 };
-  }
-
-  const contribution = {
-    kind: "planned",
-    stagedFiles: 1,
-    stagedHunks: mark ? countMarkedHunks(patch, mark) : 0,
-  } as const;
-
   if (!requiresWorkingCopyCheck(disposition, patch)) {
-    return { ...contribution, operations: [] };
+    return { entry: { patch, disposition } };
   }
 
   const document = parseDocument(await environment.readWorkingCopyFile(patch.path));
   const stale = findStaleHunk(document, patch.hunks);
-  if (stale) {
-    return {
-      kind: "stale",
-      path: patch.path,
-      detail: `line ${stale.line} reads ${JSON.stringify(stale.found ?? "")} but the review expected ${JSON.stringify(stale.expected)}`,
-    };
-  }
 
-  return {
-    ...contribution,
-    operations:
-      disposition.kind === "rebuild"
-        ? [rebuildOperation(patch, document, disposition.selected)]
-        : [],
-  };
+  return stale
+    ? { kind: "stale", path: patch.path, detail: describeStaleness(document, stale) }
+    : { entry: { patch, disposition, document } };
 }
 
-async function runSquash(
-  operations: readonly StageOperation[],
-  into: string,
-  environment: StageEnvironment,
-): Promise<void> {
-  const stage = await createStageDirectory(operations);
-
-  try {
-    const configPath = join(stage.root, "tool.toml");
-    await writeFile(configPath, renderToolConfig(stage.scriptPath, stage.root), "utf8");
-    await environment.jj.run(buildSquashArgs({ configPath, into }));
-  } finally {
-    await stage.dispose();
-  }
+function describeStaleness(
+  _document: Document,
+  stale: { line: number; found: string | undefined; expected: string },
+): string {
+  return `line ${stale.line} reads ${JSON.stringify(stale.found ?? "")} but the review expected ${JSON.stringify(stale.expected)}`;
 }

@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import type { StageOperation } from "./plan";
+import type { StageOperation } from "./operations";
 import {
   CONTENT_DIRECTORY,
   DELETE_MANIFEST,
@@ -47,7 +47,7 @@ export async function createStageDirectory(
     }
   }
 
-  const root = await mkdtemp(join(tmpdir(), "hunk-jj-stage-"));
+  const root = await mkdtemp(join(tmpdir(), "hunk-stage-"));
 
   await Promise.all([
     writeFile(join(root, HELPER_SCRIPT_NAME), HELPER_SCRIPT, "utf8"),

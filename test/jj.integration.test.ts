@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { createJjBackend } from "../src/jj/backend";
 import { createJj } from "../src/jj/repository";
 import type { FileMark } from "../src/staging/plan";
 import { stageMarkedHunks, type StageOutcome } from "../src/staging/stage";
@@ -43,9 +44,9 @@ async function stage(marks: Record<string, FileMark>, into = "@-"): Promise<Stag
   );
 
   return stageMarkedHunks(
-    { files, marks: marksById, into },
+    { files, marks: marksById },
     {
-      jj: createJj({ root: repository.root }),
+      backend: createJjBackend({ jj: createJj({ root: repository.root }), into }),
       readWorkingCopyFile: (path) => readFile(join(repository.root, path), "utf8"),
     },
   );
@@ -107,10 +108,9 @@ describeWithJj("staging part of a file", () => {
       {
         files,
         marks: new Map([[files[0]!.id, { kind: "hunks", hunks: new Set([0]) }]]),
-        into: "@-",
       },
       {
-          jj: createJj({ root: repository.root }),
+        backend: createJjBackend({ jj: createJj({ root: repository.root }), into: "@-" }),
         readWorkingCopyFile: (path) => readFile(join(repository.root, path), "utf8"),
       },
     );

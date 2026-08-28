@@ -44,13 +44,12 @@ export class ReviewSession {
   /**
    * Describe the whole review for staging.
    *
-   * Every file goes in, not only the marked ones: staging has to state what
-   * happens to each file, and "nothing moves" is an answer it must give
-   * explicitly.
+   * Every file goes in, not only the marked ones. A backend may need to say
+   * out loud what stays behind — Jujutsu does, having no index — and only a
+   * complete list lets it.
    */
-  toStageRequest(into: string): StageRequest {
+  toStageRequest(): StageRequest {
     return {
-      into,
       marks: this.marks.snapshot(),
       files: this.files.map((file) => ({
         id: file.id,

@@ -1,12 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { parseDocument } from "../src/patch/document";
 import { parseFilePatch } from "../src/patch/parse";
-import {
-  disposeFile,
-  rebuildOperation,
-  requiresWorkingCopyCheck,
-  revertOperations,
-} from "../src/staging/plan";
+import { disposeFile, requiresWorkingCopyCheck } from "../src/staging/plan";
 
 const twoHunks = parseFilePatch(`--- a/f
 +++ b/f
@@ -48,53 +42,6 @@ Binary files a/i.png and b/i.png differ
 
     expect(disposeFile(binary, { kind: "whole" })).toEqual({ kind: "leave" });
     expect(disposeFile(binary, undefined)).toEqual({ kind: "revert" });
-  });
-});
-
-describe("revertOperations", () => {
-  test("removes a file the change created", () => {
-    const added = parseFilePatch(`diff --git a/n b/n
-new file mode 100644
---- /dev/null
-+++ b/n
-@@ -0,0 +1,1 @@
-+hi
-`);
-
-    expect(revertOperations(added)).toEqual([{ kind: "delete", path: "n" }]);
-  });
-
-  test("restores a modified or deleted file from the target's side", () => {
-    expect(revertOperations(twoHunks)).toEqual([{ kind: "restore", path: "f" }]);
-  });
-
-  test("unwinds a rename at both paths", () => {
-    const renamed = parseFilePatch(`diff --git a/old b/new
-rename from old
-rename to new
---- a/old
-+++ b/new
-@@ -1,1 +1,1 @@
--a
-+b
-`);
-
-    expect(revertOperations(renamed)).toEqual([
-      { kind: "delete", path: "new" },
-      { kind: "restore", path: "old" },
-    ]);
-  });
-});
-
-describe("rebuildOperation", () => {
-  test("writes the file carrying only the marked hunks", () => {
-    const document = parseDocument("alpha\nBETA\ngamma\ndelta\nEPSILON\n");
-
-    expect(rebuildOperation(twoHunks, document, new Set([0]))).toEqual({
-      kind: "write",
-      path: "f",
-      content: "alpha\nBETA\ngamma\ndelta\nepsilon\n",
-    });
   });
 });
 

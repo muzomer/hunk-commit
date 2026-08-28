@@ -22,20 +22,24 @@ export const messages = {
 
   nothingMarked: "Nothing is marked yet — mark hunks with x, or a whole file with X",
 
-  notAJujutsuWorkspace: "This review is not inside a Jujutsu workspace",
+  noWorkspace: "This review is not inside a git or Jujutsu workspace",
+
+  gitHasOneDestination: "In a git repository the index is the only destination — press S to stage",
 
   unsupportedPlatform:
-    "Staging needs a POSIX shell to hand the selection to jj, which this platform does not provide",
+    "Staging into Jujutsu needs a POSIX shell to hand jj the selection, which this platform does not provide",
 
-  confirmTitle: (summary: MarkSummary, into: string) =>
-    `Stage ${plural(summary.hunks, "hunk")} into ${into}?`,
+  confirmTitle: (summary: MarkSummary, destination: string) =>
+    `Stage ${plural(summary.hunks, "hunk")} into ${destination}?`,
 
-  confirmBody: (summary: MarkSummary, into: string) =>
-    `${plural(summary.hunks, "hunk")} in ${plural(summary.files, "file")} will move into ${into}. ` +
-    "Your files on disk do not change. Undo the whole move with `jj undo`.",
+  confirmBody: (summary: MarkSummary, destination: string, kind: "git" | "jj") =>
+    `${plural(summary.hunks, "hunk")} in ${plural(summary.files, "file")} will move into ${destination}. ` +
+    `Your files on disk do not change. ${
+      kind === "jj" ? "Undo the whole move with `jj undo`." : "Unstage with `git restore --staged`."
+    }`,
 
-  staged: (summary: MarkSummary, into: string) =>
-    `Staged ${plural(summary.hunks, "hunk")} in ${plural(summary.files, "file")} into ${into}`,
+  staged: (summary: MarkSummary, destination: string) =>
+    `Staged ${plural(summary.hunks, "hunk")} in ${plural(summary.files, "file")} into ${destination}`,
 
   stale: (path: string, detail: string) =>
     `${path} changed since this review loaded (${detail}). Nothing was staged — refresh with r.`,

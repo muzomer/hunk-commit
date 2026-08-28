@@ -10,7 +10,7 @@ describe("renderToolConfig", () => {
   test("points jj at the helper and passes both directories through", () => {
     expect(renderToolConfig("/stage/apply.sh", "/stage")).toBe(
       [
-        "[merge-tools.hunk-jj-stage]",
+        "[merge-tools.hunk-stage]",
         'program = "sh"',
         'edit-args = ["/stage/apply.sh", "$left", "$right", "/stage"]',
         "",
@@ -43,7 +43,7 @@ describe("buildSquashArgs", () => {
       "squash",
       "--interactive",
       "--tool",
-      "hunk-jj-stage",
+      "hunk-stage",
       "--into",
       "@-",
     ]);

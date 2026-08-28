@@ -1,26 +1,7 @@
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
-
-/** Find the Jujutsu workspace containing a directory, or null. */
-export function findWorkspaceRoot(startDirectory: string): string | null {
-  let current = resolve(startDirectory);
-
-  for (;;) {
-    if (existsSync(join(current, ".jj"))) {
-      return current;
-    }
-
-    const parent = dirname(current);
-    if (parent === current) {
-      return null;
-    }
-    current = parent;
-  }
-}
 
 export class JjCommandError extends Error {
   constructor(

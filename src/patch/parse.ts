@@ -20,6 +20,13 @@ export interface PatchLine {
 
 export interface PatchHunk {
   readonly index: number;
+  /**
+   * Whatever git wrote after the closing `@@`, including its leading space.
+   *
+   * Usually the enclosing function or section. Nothing reads it, but a patch
+   * written back out without it is not the patch that came in.
+   */
+  readonly heading: string;
   readonly oldStart: number;
   readonly oldCount: number;
   readonly newStart: number;
@@ -30,6 +37,14 @@ export interface PatchHunk {
 export type FileChangeKind = "added" | "deleted" | "renamed" | "modified";
 
 export interface FilePatch {
+  /**
+   * The patch's own header lines, verbatim.
+   *
+   * Kept exactly as they arrived so a patch can be written back out with its
+   * modes, blob hashes, and rename records intact — details this parser has no
+   * reason to understand but `git apply` does.
+   */
+  readonly headerLines: readonly string[];
   /** The file's new-side path, or its old path when the file was deleted. */
   readonly path: string;
   /** The old path, present only for a rename. */
@@ -47,7 +62,7 @@ export class PatchParseError extends Error {
   }
 }
 
-const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
+const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/;
 const DEV_NULL = "/dev/null";
 
 /** Strip git's `a/` or `b/` prefix from a `---`/`+++` path. */
@@ -228,11 +243,24 @@ export function parseFilePatch(patchText: string): FilePatch {
     const newCount = match[4] === undefined ? 1 : Number(match[4]);
 
     const body = parseHunkBody(lines, cursor + 1, oldCount, newCount);
-    hunks.push({ index: hunks.length, oldStart, oldCount, newStart, newCount, lines: body.lines });
+    hunks.push({
+      index: hunks.length,
+      heading: match[5] ?? "",
+      oldStart,
+      oldCount,
+      newStart,
+      newCount,
+      lines: body.lines,
+    });
     cursor = body.next;
   }
 
-  return { ...resolvePaths(header), binary: header.binary, hunks };
+  return {
+    ...resolvePaths(header),
+    headerLines: lines.slice(0, header.bodyStart),
+    binary: header.binary,
+    hunks,
+  };
 }
 
 /** One hunk's inclusive line span on one side, using Hunk's own convention. */
