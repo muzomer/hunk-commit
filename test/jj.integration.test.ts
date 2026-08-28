@@ -309,3 +309,21 @@ describeWithJj("refusing to stage nothing", () => {
     );
   });
 });
+
+describeWithJj("a hunk containing a blank added line", () => {
+  test("stages the blank line too, though nothing can paint it", async () => {
+    await repository.write("f.txt", "alpha\nbravo\ncharlie\n");
+    await repository.jj("commit", "-m", "base");
+    // A blank line and a real one, added together as one hunk.
+    await repository.write("f.txt", "alpha\nbravo\n\nadded line\ncharlie\n");
+
+    const outcome = await stage({ "f.txt": { kind: "hunks", hunks: new Set([0]) } });
+
+    expect(outcome).toEqual({ kind: "staged", files: 1, hunks: 1 });
+    // Both added lines moved: the blank one is part of the hunk that was marked.
+    expect(await repository.jj("file", "show", "-r", "@-", "f.txt")).toBe(
+      "alpha\nbravo\n\nadded line\ncharlie\n",
+    );
+    expect(await repository.jj("diff", "--git")).toBe("");
+  });
+});
