@@ -41,6 +41,9 @@ export const messages = {
   staged: (summary: MarkSummary, destination: string) =>
     `Staged ${plural(summary.hunks, "hunk")} in ${plural(summary.files, "file")} into ${destination}`,
 
+  nothingToStage:
+    "Nothing would move — the marks were cleared before staging ran, so nothing was staged",
+
   stale: (path: string, detail: string) =>
     `${path} changed since this review loaded (${detail}). Nothing was staged — refresh with r.`,
 

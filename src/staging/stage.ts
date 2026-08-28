@@ -41,7 +41,9 @@ export interface StageEnvironment {
  */
 export type StageRefusal =
   | { readonly kind: "stale"; readonly path: string; readonly detail: string }
-  | { readonly kind: "disagreement"; readonly path: string; readonly detail: string };
+  | { readonly kind: "disagreement"; readonly path: string; readonly detail: string }
+  /** Nothing in the review would move, so there is nothing to stage. */
+  | { readonly kind: "nothing-staged" };
 
 export type StageOutcome =
   | { readonly kind: "staged"; readonly files: number; readonly hunks: number }
@@ -81,6 +83,13 @@ export async function stageMarkedHunks(
       staged.files += 1;
       staged.hunks += countMarkedHunks(checked.entry.patch, mark);
     }
+  }
+
+  // Refuse rather than hand a backend an empty selection. `jj split` answers
+  // one by creating an empty revision, which looks like staging that silently
+  // lost the marks — so nothing may reach a backend without something to move.
+  if (staged.files === 0) {
+    return { kind: "nothing-staged" };
   }
 
   await environment.backend.stage(entries);

@@ -17,7 +17,7 @@ import type { StagingBackend } from "./src/staging/backend";
 import { stageMarkedHunks, type StageOutcome } from "./src/staging/stage";
 import { detectWorkspace, type Workspace } from "./src/workspace";
 import { buildMarkHighlights } from "./src/ui/highlights";
-import { messages } from "./src/ui/messages";
+import { messages, type MarkSummary } from "./src/ui/messages";
 import { ReviewSession } from "./src/ui/session";
 import { destinationFor, readTargetSetting, type TargetSetting } from "./src/ui/settings";
 
@@ -79,7 +79,9 @@ export default function activate(hunk: HunkExtensionAPI): void {
   });
 
   hunk.registerCommand({ id: "stage", title: "Stage marked hunks", key: "S" }, (ctx) =>
-    stage(ctx, session, (workspace) => resolveChoice(ctx, session, workspace, defaultTarget)),
+    stage(ctx, session, (workspace, summary) =>
+      resolveChoice(ctx, summary, workspace, defaultTarget),
+    ),
   );
 
   hunk.registerCommand(
@@ -98,7 +100,9 @@ export default function activate(hunk: HunkExtensionAPI): void {
 
       const target = await chooseTarget(ctx, createJj({ root: workspace.root }));
       if (target) {
-        await stage(ctx, session, (chosen) => resolveChoice(ctx, session, chosen, target));
+        await stage(ctx, session, (chosen, summary) =>
+          resolveChoice(ctx, summary, chosen, target),
+        );
       }
     },
   );
@@ -120,7 +124,7 @@ interface StagingChoice {
 /** Settle the destination, asking for anything only the reviewer can supply. */
 async function resolveChoice(
   ctx: ExtensionCommandContext,
-  session: ReviewSession,
+  summary: MarkSummary,
   workspace: Workspace,
   target: TargetSetting,
 ): Promise<StagingChoice | null> {
@@ -132,7 +136,7 @@ async function resolveChoice(
 
   if (target.kind === "new") {
     const message = await ctx.dialogs.input({
-      title: messages.describeNewRevision(session.summarise()),
+      title: messages.describeNewRevision(summary),
       placeholder: messages.describeNewRevisionPlaceholder,
     });
 
@@ -229,7 +233,7 @@ async function chooseTarget(
 async function stage(
   ctx: ExtensionCommandContext,
   session: ReviewSession,
-  chooseBackend: (workspace: Workspace) => Promise<StagingChoice | null>,
+  chooseBackend: (workspace: Workspace, summary: MarkSummary) => Promise<StagingChoice | null>,
 ): Promise<void> {
   if (session.marks.isEmpty) {
     ctx.notify(messages.nothingMarked, "warning");
@@ -247,13 +251,20 @@ async function stage(
     return;
   }
 
-  const choice = await chooseBackend(workspace);
+  // Capture the review and the marks together, before the first dialog, and
+  // work from that capture alone. Staging asks questions, and a reload while
+  // one is on screen replaces the review and clears its marks — reading them
+  // again afterwards would stage a selection nobody made. This mirrors what
+  // Hunk does with `ctx.selection`: captured at invocation, not live.
+  const request = session.toStageRequest();
+  const summary = session.summarise();
+
+  const choice = await chooseBackend(workspace, summary);
   if (!choice) {
     return;
   }
 
   const { backend } = choice;
-  const summary = session.summarise();
 
   if (!choice.confirmed) {
     const confirmed = await ctx.dialogs.confirm({
@@ -268,7 +279,7 @@ async function stage(
   }
 
   try {
-    const outcome = await stageMarkedHunks(session.toStageRequest(), {
+    const outcome = await stageMarkedHunks(request, {
       backend,
       readWorkingCopyFile: (path) => readFile(join(workspace.root, path), "utf8"),
     });
@@ -292,6 +303,11 @@ async function report(
 
   if (outcome.kind === "disagreement") {
     ctx.notify(messages.disagreement(outcome.path, outcome.detail), "error");
+    return;
+  }
+
+  if (outcome.kind === "nothing-staged") {
+    ctx.notify(messages.nothingToStage, "warning");
     return;
   }
 

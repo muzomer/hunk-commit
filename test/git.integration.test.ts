@@ -167,12 +167,12 @@ describeWithGit("staging whole-file changes", () => {
     expect(await repository.git("diff")).toBe("");
   });
 
-  test("leaves an unmarked file entirely alone", async () => {
+  test("refuses a review with nothing marked, and stages nothing", async () => {
     await repository.write("base.txt", "changed\n");
 
     const outcome = await stage({});
 
-    expect(outcome).toEqual({ kind: "staged", files: 0, hunks: 0 });
+    expect(outcome).toEqual({ kind: "nothing-staged" });
     expect(await repository.git("diff", "--cached")).toBe("");
     expect(changedLines(await repository.git("diff"))).toBe("-base\n+changed");
   });

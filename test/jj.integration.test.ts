@@ -275,3 +275,37 @@ describeWithJj("extracting a new revision", () => {
     expect(await descriptions()).toEqual(["[work in progress]", "[]", "[base]"]);
   });
 });
+
+describeWithJj("refusing to stage nothing", () => {
+  beforeEach(async () => {
+    await repository.write("f.txt", numberedLines(20));
+    await repository.jj("commit", "-m", "base");
+    await repository.write("f.txt", numberedLines(20).replace("line 3\n", "line 3 CHANGED\n"));
+  });
+
+  test("creates no revision when the marks are gone by staging time", async () => {
+    const before = await repository.jj("log", "--no-graph", "-T", 'commit_id ++ "\n"', "-r", "::@");
+
+    // What a reload between marking and staging leaves behind: a review with
+    // files but no marks. Splitting on that would answer with an empty
+    // revision, which is indistinguishable from staging that lost its marks.
+    const outcome = await stage({});
+
+    expect(outcome).toEqual({ kind: "nothing-staged" });
+    expect(await repository.jj("log", "--no-graph", "-T", 'commit_id ++ "\n"', "-r", "::@")).toBe(
+      before,
+    );
+    expect(changedLines(await repository.jj("diff", "--git"))).toBe(
+      "-line 3\n+line 3 CHANGED",
+    );
+  });
+
+  test("refuses the same way when extracting a new revision", async () => {
+    const outcome = await stage({}, { kind: "new", message: "would be empty" });
+
+    expect(outcome).toEqual({ kind: "nothing-staged" });
+    expect(await repository.jj("log", "--no-graph", "-T", 'description.first_line()')).not.toContain(
+      "would be empty",
+    );
+  });
+});
