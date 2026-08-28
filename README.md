@@ -6,7 +6,8 @@ revision.
 
 Either way, **your files on disk never change**. Staging moves ownership of a
 change, not the change itself: in git the marked hunks land in the index, and
-in jj they move into another revision while the rest stays in the working-copy
+in jj they are extracted into their own revision — the `git add -p` shape,
+without an index to hold them — while the rest stays in the working-copy
 change.
 
 ## Requirements
@@ -38,9 +39,10 @@ Open a working-copy review (`hunk diff`), then:
 | `X` | Mark or unmark the whole file — the only way to mark a binary or oversized file |
 | `C` | Clear every mark |
 | `S` | Stage the marked hunks |
-| `T` | jj only: pick which revision to stage into |
+| `T` | jj only: pick where they go — a new revision, or one that exists |
 
-Marked lines are painted in the diff. Staging asks first, names its
+Marked lines are painted in the diff. Staging asks first — for a description
+when it is extracting a new revision, otherwise for confirmation — names its
 destination, and reloads the review, so what you see afterwards is what is
 still unstaged.
 
@@ -55,8 +57,16 @@ repository named `hunk-stage` gives `hunk-stage.toggleHunk`,
 ```toml
 # ~/.config/hunk/config.toml
 [extension.hunk-stage]
-target = "@-"   # jj only: the revision `S` stages into. Ignored in git repositories.
+target = "new"   # jj only, and the default: extract a new revision.
+                 # Any revset instead — "@-", a change id — squashes into it.
+                 # Ignored in git repositories.
 ```
+
+`"new"` suits the working style where `@` *is* the change you are building:
+marking hunks and pressing `S` carves a finished piece out from under it,
+rewriting nothing that already exists. Set a revset instead if you work the
+other way, keeping `@` as scratch above the change you are building and
+squashing down into it as you go.
 
 ## How it works
 
@@ -69,15 +79,21 @@ patch of the marked hunks applies exactly where it was measured, and composes
 with whatever was staged before. Whole-file marks go through `git add` instead,
 which handles binaries, renames, and mode changes natively.
 
-**Jujutsu** has no index, so staging is `jj squash`, and sub-file selection has
-to go through jj's diff editor: it runs one with `$left` holding the target's
-content and `$right` holding everything the source revision changed, and
-whatever `$right` contains when the editor exits is what moves. So this
-extension rebuilds each partly marked file by **reverting** its unmarked hunks,
-writes the results into a staging directory, and points a generated merge-tool
-config at a small `sh` script that copies that directory into `$right`. `jj`
-does the rest — rewriting the target, rebasing descendants, and recording one
-operation, which **`jj undo` reverses completely**.
+**Jujutsu** has no index, so staging is a rewrite — `jj split` to extract the
+marked hunks into a new revision, or `jj squash` to fold them into one that
+already exists. Either way sub-file selection goes through jj's diff editor: it
+runs one with `$left` holding the target's content and `$right` holding
+everything the source revision changed, and whatever `$right` contains when the
+editor exits is what moves. So this extension rebuilds each partly marked file
+by **reverting** its unmarked hunks, writes the results into a staging
+directory, and points a generated merge-tool config at a small `sh` script that
+copies that directory into `$right`. Both commands read the same two
+directories, so the selection means the same thing to either. `jj` does the
+rest — rewriting revisions, rebasing descendants, and recording one operation,
+which **`jj undo` reverses completely**.
+
+The new revision's description is passed with `--message`, so jj never opens an
+editor that would fight Hunk for the terminal.
 
 The difference shows up in one detail: in git, a file nobody marked needs no
 instruction at all, because "not staged" is git's default state. In jj, a
@@ -108,8 +124,8 @@ Staging is refused, with nothing written, when:
   copy, so `hunk show <rev>` and range diffs are not stageable.
 - **Staging only, not unstaging.** `hunk diff --staged` plus a reversed patch
   would give git unstaging; it is not wired up.
-- **jj stages into an ancestor only.** `jj split` and `jj absorb` are not wired
-  up yet; both would reuse the same machinery.
+- **`jj absorb` is not wired up** — routing each hunk to the ancestor that last
+  touched those lines would reuse the same machinery.
 - **Binary and oversized files are all-or-nothing** — Hunk shows no hunks for
   them, so `X` is the only way to stage them.
 - **Windows works for git, not jj.** The jj helper needs a POSIX shell; the

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { createJjBackend } from "../src/jj/backend";
+import type { JjDestination } from "../src/jj/tool";
 import { createJj } from "../src/jj/repository";
 import type { FileMark } from "../src/staging/plan";
 import { stageMarkedHunks, type StageOutcome } from "../src/staging/stage";
@@ -30,7 +31,10 @@ afterEach(async () => {
 });
 
 /** Stage `marks` into `@-`, using the working copy's current diff as the review. */
-async function stage(marks: Record<string, FileMark>, into = "@-"): Promise<StageOutcome> {
+async function stage(
+  marks: Record<string, FileMark>,
+  destination: JjDestination = { kind: "revision", revset: "@-" },
+): Promise<StageOutcome> {
   const files = reviewFromPatch(await repository.jj("diff", "--git"));
   const byPath = new Map(files.map((file) => [file.path, file.id]));
   const marksById = new Map(
@@ -46,7 +50,7 @@ async function stage(marks: Record<string, FileMark>, into = "@-"): Promise<Stag
   return stageMarkedHunks(
     { files, marks: marksById },
     {
-      backend: createJjBackend({ jj: createJj({ root: repository.root }), into }),
+      backend: createJjBackend({ jj: createJj({ root: repository.root }), destination }),
       readWorkingCopyFile: (path) => readFile(join(repository.root, path), "utf8"),
     },
   );
@@ -110,7 +114,7 @@ describeWithJj("staging part of a file", () => {
         marks: new Map([[files[0]!.id, { kind: "hunks", hunks: new Set([0]) }]]),
       },
       {
-        backend: createJjBackend({ jj: createJj({ root: repository.root }), into: "@-" }),
+        backend: createJjBackend({ jj: createJj({ root: repository.root }), destination: { kind: "revision", revset: "@-" } }),
         readWorkingCopyFile: (path) => readFile(join(repository.root, path), "utf8"),
       },
     );
@@ -197,5 +201,77 @@ describeWithJj("staging whole-file changes", () => {
 
     expect(await repository.jj("diff", "--git", "-r", "@-")).not.toContain("blob.bin");
     expect(await repository.jj("diff", "--git")).toContain("blob.bin");
+  });
+});
+
+describeWithJj("extracting a new revision", () => {
+  beforeEach(async () => {
+    await repository.write("f.txt", numberedLines(20));
+    await repository.jj("commit", "-m", "base");
+
+    await repository.write(
+      "f.txt",
+      numberedLines(20)
+        .replace("line 3\n", "line 3 CHANGED\n")
+        .replace("line 17\n", "line 17 CHANGED\n"),
+    );
+    await repository.jj("describe", "-m", "work in progress");
+  });
+
+  /** Descriptions from `@` down to the base, bracketed so empty ones still show. */
+  const descriptions = async () =>
+    (
+      await repository.jj(
+        "log",
+        "--no-graph",
+        "-T",
+        '"[" ++ description.first_line() ++ "]\n"',
+        "-r",
+        "::@ ~ root()",
+      )
+    )
+      .split("\n")
+      .filter(Boolean);
+
+  test("puts the marked hunks in a new revision below the working copy", async () => {
+    const before = await repository.read("f.txt");
+
+    const outcome = await stage({ "f.txt": { kind: "hunks", hunks: new Set([0]) } }, {
+      kind: "new",
+      message: "extracted hunk",
+    });
+
+    expect(outcome).toEqual({ kind: "staged", files: 1, hunks: 1 });
+    expect(await descriptions()).toEqual(["[work in progress]", "[extracted hunk]", "[base]"]);
+
+    // The new revision holds only what was marked; the rest is still in @.
+    expect(changedLines(await repository.jj("diff", "--git", "-r", "@-"))).toBe(
+      "-line 3\n+line 3 CHANGED",
+    );
+    expect(changedLines(await repository.jj("diff", "--git"))).toBe(
+      "-line 17\n+line 17 CHANGED",
+    );
+    expect(await repository.read("f.txt")).toBe(before);
+  });
+
+  test("rewrites no existing revision", async () => {
+    const baseBefore = await repository.jj("log", "--no-graph", "-T", "commit_id", "-r", "@--");
+
+    await stage({ "f.txt": { kind: "hunks", hunks: new Set([0]) } }, {
+      kind: "new",
+      message: "extracted hunk",
+    });
+
+    // Splitting inserts a revision; the change it was split out of is the only
+    // one rewritten, so everything below is untouched.
+    expect(await repository.jj("log", "--no-graph", "-T", "commit_id", "-r", "@---")).toBe(
+      baseBefore,
+    );
+  });
+
+  test("accepts an empty description without opening an editor", async () => {
+    await stage({ "f.txt": { kind: "hunks", hunks: new Set([1]) } }, { kind: "new", message: "" });
+
+    expect(await descriptions()).toEqual(["[work in progress]", "[]", "[base]"]);
   });
 });

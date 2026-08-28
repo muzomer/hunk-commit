@@ -11,6 +11,7 @@ import { createGit } from "./src/git/repository";
 import { createJjBackend } from "./src/jj/backend";
 import { createJj, type Jj } from "./src/jj/repository";
 import { listStagingTargets } from "./src/jj/revisions";
+import type { JjDestination } from "./src/jj/tool";
 import { parseFilePatch } from "./src/patch/parse";
 import type { StagingBackend } from "./src/staging/backend";
 import { stageMarkedHunks, type StageOutcome } from "./src/staging/stage";
@@ -18,7 +19,7 @@ import { detectWorkspace, type Workspace } from "./src/workspace";
 import { buildMarkHighlights } from "./src/ui/highlights";
 import { messages } from "./src/ui/messages";
 import { ReviewSession } from "./src/ui/session";
-import { readTargetSetting } from "./src/ui/settings";
+import { destinationFor, readTargetSetting, type TargetSetting } from "./src/ui/settings";
 
 /**
  * hunk-stage — mark hunks while reviewing, and stage them without leaving the
@@ -78,7 +79,7 @@ export default function activate(hunk: HunkExtensionAPI): void {
   });
 
   hunk.registerCommand({ id: "stage", title: "Stage marked hunks", key: "S" }, (ctx) =>
-    stage(ctx, session, (workspace) => backendFor(workspace, defaultTarget)),
+    stage(ctx, session, (workspace) => resolveChoice(ctx, session, workspace, defaultTarget)),
   );
 
   hunk.registerCommand(
@@ -97,17 +98,57 @@ export default function activate(hunk: HunkExtensionAPI): void {
 
       const target = await chooseTarget(ctx, createJj({ root: workspace.root }));
       if (target) {
-        await stage(ctx, session, (chosen) => backendFor(chosen, target));
+        await stage(ctx, session, (chosen) => resolveChoice(ctx, session, chosen, target));
       }
     },
   );
 }
 
-/** Build the backend that stages into this workspace. */
-function backendFor(workspace: Workspace, jjTarget: string): StagingBackend {
-  return workspace.kind === "jj"
-    ? createJjBackend({ jj: createJj({ root: workspace.root }), into: jjTarget })
-    : createGitBackend({ git: createGit({ root: workspace.root }) });
+/**
+ * What one staging run will do, once the reviewer has settled it.
+ *
+ * `confirmed` records that choosing the destination already asked the reviewer
+ * to commit to it — typing a description for a new revision is an answer, and
+ * asking again straight afterwards would be a second question about the same
+ * decision.
+ */
+interface StagingChoice {
+  readonly backend: StagingBackend;
+  readonly confirmed: boolean;
+}
+
+/** Settle the destination, asking for anything only the reviewer can supply. */
+async function resolveChoice(
+  ctx: ExtensionCommandContext,
+  session: ReviewSession,
+  workspace: Workspace,
+  target: TargetSetting,
+): Promise<StagingChoice | null> {
+  if (workspace.kind === "git") {
+    return { backend: createGitBackend({ git: createGit({ root: workspace.root }) }), confirmed: false };
+  }
+
+  let destination: JjDestination;
+
+  if (target.kind === "new") {
+    const message = await ctx.dialogs.input({
+      title: messages.describeNewRevision(session.summarise()),
+      placeholder: messages.describeNewRevisionPlaceholder,
+    });
+
+    if (message === null) {
+      return null;
+    }
+
+    destination = destinationFor(target, message.trim());
+  } else {
+    destination = destinationFor(target, "");
+  }
+
+  return {
+    backend: createJjBackend({ jj: createJj({ root: workspace.root }), destination }),
+    confirmed: target.kind === "new",
+  };
 }
 
 /** Paint one file's marked hunks, or nothing if its patch cannot be read. */
@@ -146,20 +187,31 @@ function requireWorkspace(ctx: ExtensionCommandContext): Workspace | null {
   return workspace;
 }
 
-async function chooseTarget(ctx: ExtensionCommandContext, jj: Jj): Promise<string | null> {
+/**
+ * Offer the destinations this repository actually has.
+ *
+ * A new revision comes first because it rewrites nothing that already exists;
+ * the rest are the mutable ancestors a squash could fold into.
+ */
+async function chooseTarget(
+  ctx: ExtensionCommandContext,
+  jj: Jj,
+): Promise<TargetSetting | null> {
   try {
-    const choices = await listStagingTargets(jj);
-    if (choices.length === 0) {
-      ctx.notify(messages.noTargetsAvailable, "warning");
+    const revisions = await listStagingTargets(jj);
+    const options = [messages.newRevisionOption, ...revisions.map((choice) => choice.label)];
+
+    const chosen = await ctx.dialogs.select({ title: messages.chooseTarget, options });
+    if (chosen === null) {
       return null;
     }
 
-    const chosen = await ctx.dialogs.select({
-      title: messages.chooseTarget,
-      options: choices.map((choice) => choice.label),
-    });
+    if (chosen === messages.newRevisionOption) {
+      return { kind: "new" };
+    }
 
-    return choices.find((choice) => choice.label === chosen)?.revision ?? null;
+    const revision = revisions.find((choice) => choice.label === chosen)?.revision;
+    return revision ? { kind: "revision", revset: revision } : null;
   } catch (error) {
     ctx.notify(messages.failed(describe(error)), "error");
     return null;
@@ -177,7 +229,7 @@ async function chooseTarget(ctx: ExtensionCommandContext, jj: Jj): Promise<strin
 async function stage(
   ctx: ExtensionCommandContext,
   session: ReviewSession,
-  chooseBackend: (workspace: Workspace) => StagingBackend,
+  chooseBackend: (workspace: Workspace) => Promise<StagingChoice | null>,
 ): Promise<void> {
   if (session.marks.isEmpty) {
     ctx.notify(messages.nothingMarked, "warning");
@@ -195,16 +247,24 @@ async function stage(
     return;
   }
 
-  const backend = chooseBackend(workspace);
-  const summary = session.summarise();
-  const confirmed = await ctx.dialogs.confirm({
-    title: messages.confirmTitle(summary, backend.destination),
-    body: messages.confirmBody(summary, backend.destination, workspace.kind),
-    confirmLabel: "stage",
-  });
-
-  if (!confirmed) {
+  const choice = await chooseBackend(workspace);
+  if (!choice) {
     return;
+  }
+
+  const { backend } = choice;
+  const summary = session.summarise();
+
+  if (!choice.confirmed) {
+    const confirmed = await ctx.dialogs.confirm({
+      title: messages.confirmTitle(summary, backend.destination),
+      body: messages.confirmBody(summary, backend.destination, workspace.kind),
+      confirmLabel: "stage",
+    });
+
+    if (!confirmed) {
+      return;
+    }
   }
 
   try {

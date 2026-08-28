@@ -1,5 +1,16 @@
-/** The revision staged hunks move into when the reviewer does not pick one. */
-export const DEFAULT_TARGET = "@-";
+import type { JjDestination } from "../jj/tool";
+
+/**
+ * The configured default destination for Jujutsu repositories.
+ *
+ * `"new"` extracts the marked hunks into a fresh revision, which rewrites
+ * nothing that already exists. Anything else is read as a revset to squash
+ * into, for the working style where `@` is scratch above the change being
+ * built.
+ */
+export type TargetSetting = { kind: "new" } | { kind: "revision"; revset: string };
+
+export const DEFAULT_TARGET: TargetSetting = { kind: "new" };
 
 /**
  * Read the configured default target.
@@ -12,7 +23,7 @@ export const DEFAULT_TARGET = "@-";
 export function readTargetSetting(
   config: Record<string, unknown>,
   log: (message: string) => void,
-): string {
+): TargetSetting {
   const configured = config.target;
 
   if (configured === undefined) {
@@ -20,9 +31,17 @@ export function readTargetSetting(
   }
 
   if (typeof configured !== "string" || configured.trim() === "") {
-    log(`Ignoring [extension.hunk-stage] target: expected a revset string, got ${typeof configured}`);
+    log(
+      `Ignoring [extension.hunk-stage] target: expected "new" or a revset, got ${typeof configured}`,
+    );
     return DEFAULT_TARGET;
   }
 
-  return configured.trim();
+  const revset = configured.trim();
+  return revset === "new" ? { kind: "new" } : { kind: "revision", revset };
+}
+
+/** Turn a configured target into the destination a staging run uses. */
+export function destinationFor(target: TargetSetting, message: string): JjDestination {
+  return target.kind === "new" ? { kind: "new", message } : { kind: "revision", revset: target.revset };
 }

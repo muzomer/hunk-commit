@@ -49,7 +49,14 @@ export const messages = {
 
   failed: (detail: string) => `jj could not stage the selection: ${detail}`,
 
-  chooseTarget: "Stage marked hunks into which revision?",
+  chooseTarget: "Stage marked hunks where?",
+
+  newRevisionOption: "A new revision",
+
+  describeNewRevisionPlaceholder: "Description (optional)",
+
+  describeNewRevision: (summary: MarkSummary) =>
+    `Describe the new revision (${plural(summary.hunks, "hunk")} in ${plural(summary.files, "file")})`,
 
   noTargetsAvailable: "No mutable revision is available to stage into",
 } as const;
