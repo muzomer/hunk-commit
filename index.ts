@@ -169,7 +169,12 @@ function markHighlightsFor(
   try {
     return buildMarkHighlights(parseFilePatch(file.patch), mark).map((highlight) => ({
       ...highlight,
-      tone: "info" as const,
+      // Amber, where the diff's own vocabulary is green, red, and neutral. A
+      // mark has to say "chosen", not "slightly lighter": the tones that only
+      // shift brightness disappear against an added line's green, and the two
+      // that carry meaning already — red for removed, near-white for the
+      // current search match — would either lie or flatten the diff's colours.
+      tone: "match" as const,
     }));
   } catch (error) {
     hunk.log(`Could not paint marks for ${file.path}: ${describe(error)}`);
