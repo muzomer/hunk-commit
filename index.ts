@@ -19,7 +19,7 @@ import { stageMarkedHunks, type StageOutcome } from "./src/staging/stage";
 import { detectWorkspace, type Workspace } from "./src/workspace";
 import { buildMarkHighlights } from "./src/ui/highlights";
 import { messages, type MarkSummary } from "./src/ui/messages";
-import { ReviewSession } from "./src/ui/session";
+import { ReviewSession, type Selection } from "./src/ui/session";
 import {
   destinationFor,
   readContextMarksSetting,
@@ -198,7 +198,29 @@ function markHighlightsFor(
 
 function reportMarks(ctx: ExtensionCommandContext, session: ReviewSession, fileId: string): void {
   ctx.highlights.refresh(HIGHLIGHTER_ID, { fileId });
-  ctx.notify(session.marks.isEmpty ? messages.cleared : messages.marked(session.summarise()));
+  ctx.notify(
+    session.marks.isEmpty ? messages.cleared : messages.marked(session.summarise(session.marks.snapshot())),
+  );
+}
+
+/**
+ * What this command should act on: the marks, or the hunk under the cursor.
+ *
+ * Reports and returns null when there is neither, so callers can bail without
+ * repeating the message.
+ */
+function requireSelection(ctx: ExtensionCommandContext, session: ReviewSession): Selection | null {
+  const file = ctx.selection.file;
+  const cursor =
+    file && ctx.selection.hunkIndex !== null
+      ? { fileId: file.id, hunkIndex: ctx.selection.hunkIndex }
+      : null;
+
+  const selection = session.selectionFor(cursor);
+  if (!selection) {
+    ctx.notify(messages.nothingToActOn, "warning");
+  }
+  return selection;
 }
 
 /** Resolve the workspace this review sits in, reporting when there is none. */
@@ -254,8 +276,8 @@ async function stage(
   session: ReviewSession,
   chooseBackend: (workspace: Workspace, summary: MarkSummary) => Promise<StagingChoice | null>,
 ): Promise<void> {
-  if (session.marks.isEmpty) {
-    ctx.notify(messages.nothingMarked, "warning");
+  const selection = requireSelection(ctx, session);
+  if (!selection) {
     return;
   }
 
@@ -275,8 +297,8 @@ async function stage(
   // one is on screen replaces the review and clears its marks — reading them
   // again afterwards would stage a selection nobody made. This mirrors what
   // Hunk does with `ctx.selection`: captured at invocation, not live.
-  const request = session.toStageRequest();
-  const summary = session.summarise();
+  const request = session.toStageRequest(selection.marks);
+  const summary = session.summarise(selection.marks);
 
   const choice = await chooseBackend(workspace, summary);
   if (!choice) {
@@ -287,7 +309,7 @@ async function stage(
 
   if (!choice.confirmed) {
     const confirmed = await ctx.dialogs.confirm({
-      title: messages.confirmTitle(summary, backend.destination),
+      title: messages.confirmTitle(summary, backend.destination, selection.source),
       body: messages.confirmBody(summary, backend.destination, workspace.kind),
       confirmLabel: "stage",
     });
@@ -345,8 +367,8 @@ async function report(
  * keeps no record of uncommitted text and cannot.
  */
 async function discard(ctx: ExtensionCommandContext, session: ReviewSession): Promise<void> {
-  if (session.marks.isEmpty) {
-    ctx.notify(messages.nothingMarked, "warning");
+  const selection = requireSelection(ctx, session);
+  if (!selection) {
     return;
   }
 
@@ -355,11 +377,11 @@ async function discard(ctx: ExtensionCommandContext, session: ReviewSession): Pr
     return;
   }
 
-  const request = session.toStageRequest();
-  const summary = session.summarise();
+  const request = session.toStageRequest(selection.marks);
+  const summary = session.summarise(selection.marks);
 
   const confirmed = await ctx.dialogs.confirm({
-    title: messages.confirmDiscardTitle(summary),
+    title: messages.confirmDiscardTitle(summary, selection.source),
     body: messages.confirmDiscardBody(summary, workspace.kind),
     confirmLabel: "discard",
   });

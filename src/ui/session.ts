@@ -1,7 +1,19 @@
 import type { ExtensionDiffFile } from "hunkdiff/extension";
+import type { FileMark } from "../staging/plan";
 import type { StageRequest } from "../staging/stage";
 import type { MarkSummary } from "./messages";
 import { MarkStore } from "./marks";
+
+/**
+ * What an operation will act on, and where that came from.
+ *
+ * `source` exists so a confirmation can say "the hunk under the cursor" rather
+ * than leaving a reviewer to wonder which hunk it means.
+ */
+export interface Selection {
+  readonly marks: ReadonlyMap<string, FileMark>;
+  readonly source: "marks" | "cursor";
+}
 
 /**
  * The review as this extension sees it: the files Hunk is showing, and what
@@ -25,12 +37,12 @@ export class ReviewSession {
     return this.files;
   }
 
-  /** How much is marked, for confirmations and status messages. */
-  summarise(): MarkSummary {
+  /** How much one selection covers, for confirmations and status messages. */
+  summarise(marks: ReadonlyMap<string, FileMark>): MarkSummary {
     let hunks = 0;
 
     for (const file of this.files) {
-      const mark = this.marks.markFor(file.id);
+      const mark = marks.get(file.id);
       if (!mark) {
         continue;
       }
@@ -38,7 +50,31 @@ export class ReviewSession {
       hunks += mark.kind === "whole" ? Math.max(file.hunks?.length ?? 0, 1) : mark.hunks.size;
     }
 
-    return { files: this.marks.markedFileCount, hunks };
+    return { files: marks.size, hunks };
+  }
+
+  /**
+   * The selection an operation should act on.
+   *
+   * Marks exist to batch: to gather hunks from several places and act on them
+   * together. When there are none, the reviewer has still told us which hunk
+   * they mean — the one under the cursor — and making them mark it first would
+   * be asking twice. So the marks win when they exist, and the cursor answers
+   * when they do not.
+   */
+  selectionFor(cursor: { fileId: string; hunkIndex: number } | null): Selection | null {
+    if (!this.marks.isEmpty) {
+      return { marks: this.marks.snapshot(), source: "marks" };
+    }
+
+    if (!cursor) {
+      return null;
+    }
+
+    return {
+      marks: new Map([[cursor.fileId, { kind: "hunks", hunks: new Set([cursor.hunkIndex]) }]]),
+      source: "cursor",
+    };
   }
 
   /**
@@ -48,9 +84,9 @@ export class ReviewSession {
    * out loud what stays behind — Jujutsu does, having no index — and only a
    * complete list lets it.
    */
-  toStageRequest(): StageRequest {
+  toStageRequest(marks: ReadonlyMap<string, FileMark>): StageRequest {
     return {
-      marks: this.marks.snapshot(),
+      marks,
       files: this.files.map((file) => ({
         id: file.id,
         path: file.path,

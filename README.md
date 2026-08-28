@@ -35,11 +35,11 @@ Open a working-copy review (`hunk diff`), then:
 
 | Key | Does |
 | --- | --- |
-| `x` | Mark or unmark the hunk under the cursor |
+| `x` | Mark or unmark the hunk under the cursor — only needed to batch several |
 | `X` | Mark or unmark the whole file — the only way to mark a binary or oversized file |
 | `C` | Clear every mark |
-| `S` | Stage the marked hunks |
-| `D` | Discard the marked hunks — revert them in your working copy |
+| `S` | Stage the marked hunks, or the one under the cursor |
+| `D` | Discard the marked hunks, or the one under the cursor — reverts them in your working copy |
 | `T` | jj only: pick where they go — a new revision, or one that exists |
 
 Marked lines are painted amber in the diff — a hue the diff's own green, red,

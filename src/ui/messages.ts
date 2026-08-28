@@ -20,7 +20,7 @@ export const messages = {
 
   noHunkSelected: "Put the cursor on a hunk first, then mark it",
 
-  nothingMarked: "Nothing is marked yet — mark hunks with x, or a whole file with X",
+  nothingToActOn: "Put the cursor on a hunk, or mark several with x",
 
   noWorkspace: "This review is not inside a git or Jujutsu workspace",
 
@@ -29,8 +29,8 @@ export const messages = {
   unsupportedPlatform:
     "Staging into Jujutsu needs a POSIX shell to hand jj the selection, which this platform does not provide",
 
-  confirmTitle: (summary: MarkSummary, destination: string) =>
-    `Stage ${plural(summary.hunks, "hunk")} into ${destination}?`,
+  confirmTitle: (summary: MarkSummary, destination: string, source: "marks" | "cursor") =>
+    `Stage ${source === "cursor" ? "the hunk under the cursor" : plural(summary.hunks, "hunk")} into ${destination}?`,
 
   confirmBody: (summary: MarkSummary, destination: string, kind: "git" | "jj") =>
     `${plural(summary.hunks, "hunk")} in ${plural(summary.files, "file")} will move into ${destination}. ` +
@@ -41,8 +41,8 @@ export const messages = {
   staged: (summary: MarkSummary, destination: string) =>
     `Staged ${plural(summary.hunks, "hunk")} in ${plural(summary.files, "file")} into ${destination}`,
 
-  confirmDiscardTitle: (summary: MarkSummary) =>
-    `Discard ${plural(summary.hunks, "hunk")}?`,
+  confirmDiscardTitle: (summary: MarkSummary, source: "marks" | "cursor") =>
+    `Discard ${source === "cursor" ? "the hunk under the cursor" : plural(summary.hunks, "hunk")}?`,
 
   /**
    * The one message where the two systems must not sound alike. In Jujutsu the
