@@ -9,15 +9,24 @@ export interface MarkHighlight {
 }
 
 /**
- * Paint the changed lines of every marked hunk.
+ * Paint every line of every marked hunk.
+ *
+ * Context lines are painted along with the changed ones. Marking is a
+ * statement about the whole hunk, and painting only its `+`/`-` lines left a
+ * marked hunk looking half-marked — a stripe of tinted lines with untinted
+ * ones between them, which reads as a bug rather than as a boundary.
+ *
+ * A context line is addressed on both sides, since it exists on both and a
+ * split layout renders it twice.
  *
  * Line lengths come from the patch rather than from the file, because a
  * Jujutsu review gives extensions no readable source document — the bundled jj
  * backend contributes no file-source reader. The patch carries the same text
  * the review is showing, so it is both sufficient and exact.
  *
- * Only changed lines are painted. Marking a hunk covers its context lines too,
- * but painting those would blur where one hunk ends and the next begins.
+ * One line cannot be painted at all: an empty one. Marks colour characters,
+ * and a line with no characters offers none to colour, so a blank line inside
+ * a marked hunk stays untinted however wide a range it is given.
  */
 export function buildMarkHighlights(patch: FilePatch, mark: FileMark | undefined): MarkHighlight[] {
   if (!mark) {
@@ -44,6 +53,8 @@ export function buildMarkHighlights(patch: FilePatch, mark: FileMark | undefined
         highlights.push({ side: "old", line: oldLine, range });
         oldLine += 1;
       } else {
+        highlights.push({ side: "old", line: oldLine, range });
+        highlights.push({ side: "new", line: newLine, range });
         oldLine += 1;
         newLine += 1;
       }

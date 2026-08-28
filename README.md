@@ -41,7 +41,9 @@ Open a working-copy review (`hunk diff`), then:
 | `S` | Stage the marked hunks |
 | `T` | jj only: pick where they go — a new revision, or one that exists |
 
-Marked lines are painted in the diff. Staging asks first — for a description
+Marked hunks are painted in the diff, end to end — context lines included, so
+a marked hunk reads as one block. A completely blank line inside one stays
+untinted: marks colour characters, and a blank line has none to colour. Staging asks first — for a description
 when it is extracting a new revision, otherwise for confirmation — names its
 destination, and reloads the review, so what you see afterwards is what is
 still unstaged.
