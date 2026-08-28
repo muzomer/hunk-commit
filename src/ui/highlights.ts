@@ -1,6 +1,9 @@
 import type { FilePatch } from "../patch/parse";
 import type { FileMark } from "../staging/plan";
 
+/** How much of a marked hunk's context lines carries the mark. */
+export type ContextMarks = "none" | "edge" | "full";
+
 /** One painted line, in the shape Hunk's line highlighter contributes. */
 export interface MarkHighlight {
   readonly side: "old" | "new";
@@ -9,18 +12,17 @@ export interface MarkHighlight {
 }
 
 /**
- * Paint every line of a marked hunk, but not all of them the same way.
+ * Paint the lines of a marked hunk.
  *
- * Two things are worth seeing and they are not the same thing: which lines are
- * about to move, and how far the hunk you marked reaches. Changed lines carry
- * the mark across their full width, because those are the lines that move.
- * Context lines carry it only in the first couple of columns — enough to draw
- * a continuous edge down the hunk, without claiming that a line which stays
- * put is going anywhere.
+ * Changed lines always carry the mark across their full width: those are the
+ * lines that move, and they are what marking is about.
  *
- * Painting nothing at all on context lines was the first attempt, and it left
- * a marked hunk looking half-marked: a stripe of tinted lines with untinted
- * ones between them, which reads as a bug rather than as a boundary.
+ * Context lines are a judgement call, so they are a setting. Marking them says
+ * how far the hunk reaches, which is real information — but a hunk carries up
+ * to three lines of context on each side, so it also makes the marked region
+ * look considerably larger than what will actually move. `"none"` is the
+ * default for that reason; `"edge"` draws a thin rail down the hunk, and
+ * `"full"` paints context exactly like the lines that move.
  *
  * A context line is addressed on both sides, since it exists on both and a
  * split layout renders it twice.
@@ -34,7 +36,11 @@ export interface MarkHighlight {
  * and a line with no characters offers none to colour, so a blank line inside
  * a marked hunk stays untinted however wide a range it is given.
  */
-export function buildMarkHighlights(patch: FilePatch, mark: FileMark | undefined): MarkHighlight[] {
+export function buildMarkHighlights(
+  patch: FilePatch,
+  mark: FileMark | undefined,
+  contextMarks: ContextMarks = "none",
+): MarkHighlight[] {
   if (!mark) {
     return [];
   }
@@ -61,9 +67,12 @@ export function buildMarkHighlights(patch: FilePatch, mark: FileMark | undefined
         highlights.push({ side: "old", line: oldLine, range });
         oldLine += 1;
       } else {
-        const edge = [0, Math.min(range[1], EDGE_WIDTH)] as const;
-        highlights.push({ side: "old", line: oldLine, range: edge });
-        highlights.push({ side: "new", line: newLine, range: edge });
+        if (contextMarks !== "none") {
+          const width = contextMarks === "edge" ? Math.min(range[1], EDGE_WIDTH) : range[1];
+          const contextRange = [0, width] as const;
+          highlights.push({ side: "old", line: oldLine, range: contextRange });
+          highlights.push({ side: "new", line: newLine, range: contextRange });
+        }
         oldLine += 1;
         newLine += 1;
       }

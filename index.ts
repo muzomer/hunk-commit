@@ -19,7 +19,13 @@ import { detectWorkspace, type Workspace } from "./src/workspace";
 import { buildMarkHighlights } from "./src/ui/highlights";
 import { messages, type MarkSummary } from "./src/ui/messages";
 import { ReviewSession } from "./src/ui/session";
-import { destinationFor, readTargetSetting, type TargetSetting } from "./src/ui/settings";
+import {
+  destinationFor,
+  readContextMarksSetting,
+  readTargetSetting,
+  type TargetSetting,
+} from "./src/ui/settings";
+import type { ContextMarks } from "./src/ui/highlights";
 
 /**
  * hunk-stage — mark hunks while reviewing, and stage them without leaving the
@@ -35,13 +41,14 @@ const HIGHLIGHTER_ID = "marks";
 export default function activate(hunk: HunkExtensionAPI): void {
   const session = new ReviewSession();
   const defaultTarget = readTargetSetting(hunk.config, (message) => hunk.log(message));
+  const contextMarks = readContextMarksSetting(hunk.config, (message) => hunk.log(message));
 
   hunk.on("changeset_loaded", ({ changeset }) => session.reload(changeset.files));
   hunk.on("session_reload", ({ changeset }) => session.reload(changeset.files));
 
   hunk.registerLineHighlighter({
     id: HIGHLIGHTER_ID,
-    highlight: ({ file }) => markHighlightsFor(file, session, hunk),
+    highlight: ({ file }) => markHighlightsFor(file, session, hunk, contextMarks),
   });
 
   hunk.registerCommand(
@@ -160,6 +167,7 @@ function markHighlightsFor(
   file: ExtensionDiffFile,
   session: ReviewSession,
   hunk: HunkExtensionAPI,
+  contextMarks: ContextMarks,
 ): ExtensionLineHighlight[] | null {
   const mark = session.marks.markFor(file.id);
   if (!mark) {
@@ -167,7 +175,7 @@ function markHighlightsFor(
   }
 
   try {
-    return buildMarkHighlights(parseFilePatch(file.patch), mark).map((highlight) => ({
+    return buildMarkHighlights(parseFilePatch(file.patch), mark, contextMarks).map((highlight) => ({
       ...highlight,
       // Amber, where the diff's own vocabulary is green, red, and neutral. A
       // mark has to say "chosen", not "slightly lighter": the tones that only

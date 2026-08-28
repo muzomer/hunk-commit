@@ -20,12 +20,17 @@ describe("buildMarkHighlights", () => {
     expect(buildMarkHighlights(patch, undefined)).toEqual([]);
   });
 
-  test("paints changed lines fully and context lines only at the edge", () => {
+  test("marks only the lines that move by default", () => {
     expect(buildMarkHighlights(patch, { kind: "hunks", hunks: new Set([0]) })).toEqual([
-      // "alpha" — context, so an edge mark on both sides.
+      { side: "old", line: 2, range: [0, 4] },
+      { side: "new", line: 2, range: [0, 4] },
+    ]);
+  });
+
+  test("draws a rail down the hunk when context marks are set to edge", () => {
+    expect(buildMarkHighlights(patch, { kind: "hunks", hunks: new Set([0]) }, "edge")).toEqual([
       { side: "old", line: 1, range: [0, 2] },
       { side: "new", line: 1, range: [0, 2] },
-      // "beta" / "BETA" — the lines that actually move, marked full width.
       { side: "old", line: 2, range: [0, 4] },
       { side: "new", line: 2, range: [0, 4] },
       { side: "old", line: 3, range: [0, 2] },
@@ -33,18 +38,25 @@ describe("buildMarkHighlights", () => {
     ]);
   });
 
+  test("paints context like the moving lines when set to full", () => {
+    expect(buildMarkHighlights(patch, { kind: "hunks", hunks: new Set([0]) }, "full")).toEqual([
+      { side: "old", line: 1, range: [0, 5] },
+      { side: "new", line: 1, range: [0, 5] },
+      { side: "old", line: 2, range: [0, 4] },
+      { side: "new", line: 2, range: [0, 4] },
+      { side: "old", line: 3, range: [0, 5] },
+      { side: "new", line: 3, range: [0, 5] },
+    ]);
+  });
+
   test("tracks line numbers across context when a hunk only adds", () => {
     expect(buildMarkHighlights(patch, { kind: "hunks", hunks: new Set([1]) })).toEqual([
-      { side: "old", line: 10, range: [0, 2] },
-      { side: "new", line: 10, range: [0, 2] },
       { side: "new", line: 11, range: [0, 8] },
-      { side: "old", line: 11, range: [0, 2] },
-      { side: "new", line: 12, range: [0, 2] },
     ]);
   });
 
   test("paints every hunk of a whole-file mark", () => {
-    expect(buildMarkHighlights(patch, { kind: "whole" })).toHaveLength(11);
+    expect(buildMarkHighlights(patch, { kind: "whole" })).toHaveLength(3);
   });
 
   test("gives an empty line a range even though nothing can paint it", () => {
@@ -56,8 +68,6 @@ describe("buildMarkHighlights", () => {
 `);
 
     expect(buildMarkHighlights(withBlank, { kind: "whole" })).toEqual([
-      { side: "old", line: 1, range: [0, 2] },
-      { side: "new", line: 1, range: [0, 2] },
       { side: "new", line: 2, range: [0, 1] },
     ]);
   });

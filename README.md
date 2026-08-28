@@ -41,12 +41,13 @@ Open a working-copy review (`hunk diff`), then:
 | `S` | Stage the marked hunks |
 | `T` | jj only: pick where they go — a new revision, or one that exists |
 
-Marked hunks are painted in the diff in two weights: the lines that will
-actually move carry the mark across their full width, while the context lines
-around them carry it only at the left edge — enough to show how far the hunk
-reaches without claiming that a line staying put is going anywhere. A
-completely blank line stays untinted either way: marks colour characters, and
-a blank line has none to colour. Staging asks first — for a description
+Marked lines are painted amber in the diff — a hue the diff's own green, red,
+and neutral do not use. By default only the lines that will actually move are
+marked; `context_marks` (below) can extend that to the context lines around
+them, at the cost of making the marked region look larger than what moves,
+since a hunk carries up to three context lines on each side. A completely
+blank line stays untinted whatever you choose: marks colour characters, and a
+blank line has none to colour. Staging asks first — for a description
 when it is extracting a new revision, otherwise for confirmation — names its
 destination, and reloads the review, so what you see afterwards is what is
 still unstaged.
@@ -62,9 +63,11 @@ repository named `hunk-stage` gives `hunk-stage.toggleHunk`,
 ```toml
 # ~/.config/hunk/config.toml
 [extension.hunk-stage]
-target = "new"   # jj only, and the default: extract a new revision.
-                 # Any revset instead — "@-", a change id — squashes into it.
-                 # Ignored in git repositories.
+target = "new"          # jj only, and the default: extract a new revision.
+                        # Any revset instead — "@-", a change id — squashes into it.
+                        # Ignored in git repositories.
+context_marks = "none"  # how much of a marked hunk's context lines is marked:
+                        # "none" (default), "edge" (a thin rail), "full".
 ```
 
 `"new"` suits the working style where `@` *is* the change you are building:
