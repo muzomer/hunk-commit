@@ -41,6 +41,29 @@ export const messages = {
   staged: (summary: MarkSummary, destination: string) =>
     `Staged ${plural(summary.hunks, "hunk")} in ${plural(summary.files, "file")} into ${destination}`,
 
+  confirmDiscardTitle: (summary: MarkSummary) =>
+    `Discard ${plural(summary.hunks, "hunk")}?`,
+
+  /**
+   * The one message where the two systems must not sound alike. In Jujutsu the
+   * working copy is already in the operation log, so this is reversible; in
+   * git, uncommitted text that is overwritten is gone.
+   */
+  confirmDiscardBody: (summary: MarkSummary, kind: "git" | "jj") =>
+    `${plural(summary.hunks, "hunk")} in ${plural(summary.files, "file")} will be reverted in your working copy. ` +
+    (kind === "jj"
+      ? "This one is recoverable: `jj undo` brings the changes back."
+      : "This cannot be undone — the changes exist nowhere else."),
+
+  discarded: (summary: MarkSummary, kind: "git" | "jj") =>
+    `Discarded ${plural(summary.hunks, "hunk")} in ${plural(summary.files, "file")}` +
+    (kind === "jj" ? " — `jj undo` brings them back" : ""),
+
+  nothingToDiscard: "Nothing would be reverted — nothing was discarded",
+
+  cannotDiscard: (path: string, detail: string) =>
+    `Cannot discard ${path}: ${detail}. Revert it with your VCS instead.`,
+
   nothingToStage:
     "Nothing would move — the marks were cleared before staging ran, so nothing was staged",
 

@@ -1,17 +1,9 @@
-import { parseDocument, type Document } from "../patch/document";
-import { findDisagreement, type HostHunk } from "../patch/agreement";
-import { parseFilePatch, type FilePatch } from "../patch/parse";
-import { findStaleHunk } from "../patch/select";
+import type { FilePatch } from "../patch/parse";
+import { checkReviewedFile, isRefusal, type ReviewedFile, type ReviewRefusal } from "../review/check";
 import type { StagedEntry, StagingBackend } from "./backend";
-import { disposeFile, requiresWorkingCopyCheck, type FileMark } from "./plan";
+import type { FileMark } from "./plan";
 
-/** One file of the review, as staging needs to see it. */
-export interface ReviewedFile {
-  readonly id: string;
-  readonly path: string;
-  readonly patchText: string;
-  readonly hostHunks: readonly HostHunk[];
-}
+export type { ReviewedFile } from "../review/check";
 
 export interface StageRequest {
   readonly files: readonly ReviewedFile[];
@@ -32,16 +24,9 @@ export interface StageEnvironment {
   readWorkingCopyFile(path: string): Promise<string>;
 }
 
-/**
- * Why staging stopped without touching the repository.
- *
- * Both refusals mean the same thing to a reviewer — what you are looking at is
- * not what is on disk — but they are found in different ways, so they are
- * reported separately.
- */
+/** Why staging stopped without touching the repository. */
 export type StageRefusal =
-  | { readonly kind: "stale"; readonly path: string; readonly detail: string }
-  | { readonly kind: "disagreement"; readonly path: string; readonly detail: string }
+  | ReviewRefusal
   /** Nothing in the review would move, so there is nothing to stage. */
   | { readonly kind: "nothing-staged" };
 
@@ -71,17 +56,17 @@ export async function stageMarkedHunks(
 
   for (const file of request.files) {
     const mark = request.marks.get(file.id);
-    const checked = await checkFile(file, mark, environment);
+    const checked = await checkReviewedFile(file, mark, environment.readWorkingCopyFile);
 
-    if ("kind" in checked) {
+    if (isRefusal(checked)) {
       return checked;
     }
 
-    entries.push(checked.entry);
+    entries.push(checked);
 
-    if (mark && checked.entry.disposition.kind !== "revert") {
+    if (mark && checked.disposition.kind !== "revert") {
       staged.files += 1;
-      staged.hunks += countMarkedHunks(checked.entry.patch, mark);
+      staged.hunks += countMarkedHunks(checked.patch, mark);
     }
   }
 
@@ -94,44 +79,4 @@ export async function stageMarkedHunks(
 
   await environment.backend.stage(entries);
   return { kind: "staged", ...staged };
-}
-
-/**
- * Check one file and decide its fate, refusing rather than guessing.
- *
- * Both refusals live here because both are questions about whether the review
- * still describes reality — one against Hunk's own parse, one against the
- * bytes on disk.
- */
-async function checkFile(
-  file: ReviewedFile,
-  mark: FileMark | undefined,
-  environment: StageEnvironment,
-): Promise<{ entry: StagedEntry } | StageRefusal> {
-  const patch = parseFilePatch(file.patchText);
-
-  const disagreement = findDisagreement(patch, file.hostHunks);
-  if (disagreement) {
-    return { kind: "disagreement", path: file.path, detail: disagreement };
-  }
-
-  const disposition = disposeFile(patch, mark);
-
-  if (!requiresWorkingCopyCheck(disposition, patch)) {
-    return { entry: { patch, disposition } };
-  }
-
-  const document = parseDocument(await environment.readWorkingCopyFile(patch.path));
-  const stale = findStaleHunk(document, patch.hunks);
-
-  return stale
-    ? { kind: "stale", path: patch.path, detail: describeStaleness(document, stale) }
-    : { entry: { patch, disposition, document } };
-}
-
-function describeStaleness(
-  _document: Document,
-  stale: { line: number; found: string | undefined; expected: string },
-): string {
-  return `line ${stale.line} reads ${JSON.stringify(stale.found ?? "")} but the review expected ${JSON.stringify(stale.expected)}`;
 }

@@ -1,11 +1,12 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type {
   ExtensionCommandContext,
   ExtensionDiffFile,
   ExtensionLineHighlight,
   HunkExtensionAPI,
 } from "hunkdiff/extension";
+import { discardMarkedHunks, type DiscardOutcome } from "./src/discard/discard";
 import { createGitBackend } from "./src/git/backend";
 import { createGit } from "./src/git/repository";
 import { createJjBackend } from "./src/jj/backend";
@@ -89,6 +90,11 @@ export default function activate(hunk: HunkExtensionAPI): void {
     stage(ctx, session, (workspace, summary) =>
       resolveChoice(ctx, summary, workspace, defaultTarget),
     ),
+  );
+
+  hunk.registerCommand(
+    { id: "discard", title: "Discard marked hunks", key: "D" },
+    (ctx) => discard(ctx, session),
   );
 
   hunk.registerCommand(
@@ -325,6 +331,88 @@ async function report(
   }
 
   ctx.notify(messages.staged(outcome, destination));
+  session.marks.clear();
+  ctx.commands.execute("hunk.app.refresh");
+}
+
+/**
+ * Revert the marked hunks in the working copy.
+ *
+ * The one command here that destroys something. It always asks — there is no
+ * path that skips the confirmation — and what it promises differs by backend,
+ * because what it does differs: Jujutsu has already snapshotted the working
+ * copy into its operation log, so `jj undo` brings the changes back, while git
+ * keeps no record of uncommitted text and cannot.
+ */
+async function discard(ctx: ExtensionCommandContext, session: ReviewSession): Promise<void> {
+  if (session.marks.isEmpty) {
+    ctx.notify(messages.nothingMarked, "warning");
+    return;
+  }
+
+  const workspace = requireWorkspace(ctx);
+  if (!workspace) {
+    return;
+  }
+
+  const request = session.toStageRequest();
+  const summary = session.summarise();
+
+  const confirmed = await ctx.dialogs.confirm({
+    title: messages.confirmDiscardTitle(summary),
+    body: messages.confirmDiscardBody(summary, workspace.kind),
+    confirmLabel: "discard",
+  });
+
+  if (!confirmed) {
+    return;
+  }
+
+  const resolve = (path: string) => join(workspace.root, path);
+
+  try {
+    const outcome = await discardMarkedHunks(request, {
+      readWorkingCopyFile: (path) => readFile(resolve(path), "utf8"),
+      writeWorkingCopyFile: async (path, content) => {
+        await mkdir(dirname(resolve(path)), { recursive: true });
+        await writeFile(resolve(path), content, "utf8");
+      },
+      removeWorkingCopyFile: (path) => rm(resolve(path), { force: true }),
+    });
+
+    reportDiscard(ctx, session, outcome, workspace.kind);
+  } catch (error) {
+    ctx.notify(messages.failed(describe(error)), "error");
+  }
+}
+
+function reportDiscard(
+  ctx: ExtensionCommandContext,
+  session: ReviewSession,
+  outcome: DiscardOutcome,
+  kind: "git" | "jj",
+): void {
+  if (outcome.kind === "stale") {
+    ctx.notify(messages.stale(outcome.path, outcome.detail), "warning");
+    return;
+  }
+
+  if (outcome.kind === "disagreement") {
+    ctx.notify(messages.disagreement(outcome.path, outcome.detail), "error");
+    return;
+  }
+
+  if (outcome.kind === "unsupported") {
+    ctx.notify(messages.cannotDiscard(outcome.path, outcome.detail), "error");
+    return;
+  }
+
+  if (outcome.kind === "nothing-discarded") {
+    ctx.notify(messages.nothingToDiscard, "warning");
+    return;
+  }
+
+  ctx.notify(messages.discarded(outcome, kind));
   session.marks.clear();
   ctx.commands.execute("hunk.app.refresh");
 }

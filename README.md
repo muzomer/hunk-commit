@@ -39,6 +39,7 @@ Open a working-copy review (`hunk diff`), then:
 | `X` | Mark or unmark the whole file — the only way to mark a binary or oversized file |
 | `C` | Clear every mark |
 | `S` | Stage the marked hunks |
+| `D` | Discard the marked hunks — revert them in your working copy |
 | `T` | jj only: pick where they go — a new revision, or one that exists |
 
 Marked lines are painted amber in the diff — a hue the diff's own green, red,
@@ -75,6 +76,29 @@ marking hunks and pressing `S` carves a finished piece out from under it,
 rewriting nothing that already exists. Set a revset instead if you work the
 other way, keeping `@` as scratch above the change you are building and
 squashing down into it as you go.
+
+### Discarding
+
+`D` is the opposite of `S`: instead of moving the marked hunks somewhere, it
+reverts them in your working copy. The arithmetic is the same one staging
+uses, run the other way round — staging keeps the marked hunks and reverts the
+rest, discarding reverts the marked hunks and keeps the rest.
+
+The consequence is not the same, and the confirmation says so in different
+words depending on where you are:
+
+- **In a Jujutsu workspace it is recoverable.** Loading a review runs
+  `jj diff`, which snapshots the working copy into the operation log, so the
+  state before the discard is already recorded. `jj undo` brings the changes
+  back.
+- **In a git repository it is not.** Uncommitted text that gets overwritten
+  exists nowhere else — there is no stash, no dangling object, nothing to
+  recover from. This is the same finality as `git restore -p`.
+
+Discarding always asks first; there is no path that skips the confirmation. A
+binary file is refused rather than guessed at, because the patch carries no
+record of what it held before — revert those with `jj restore` or
+`git restore`.
 
 ## How it works
 
@@ -132,6 +156,9 @@ Staging is refused, with nothing written, when:
   copy, so `hunk show <rev>` and range diffs are not stageable.
 - **Staging only, not unstaging.** `hunk diff --staged` plus a reversed patch
   would give git unstaging; it is not wired up.
+- **Discarding is not a transaction.** Every file is checked before any file is
+  written, so a refusal changes nothing — but an error partway through the
+  writes leaves earlier files already reverted.
 - **`jj absorb` is not wired up** — routing each hunk to the ancestor that last
   touched those lines would reuse the same machinery.
 - **Binary and oversized files are all-or-nothing** — Hunk shows no hunks for
