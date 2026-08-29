@@ -25,7 +25,7 @@ export async function hasGit(): Promise<boolean> {
 }
 
 export async function createTestGitRepository(): Promise<TestGitRepository> {
-  const root = await mkdtemp(join(tmpdir(), "hunk-stage-git-test-"));
+  const root = await mkdtemp(join(tmpdir(), "hunk-commit-git-test-"));
 
   const repository: TestGitRepository = {
     root,

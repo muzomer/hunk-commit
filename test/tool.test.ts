@@ -11,7 +11,7 @@ describe("renderToolConfig", () => {
   test("points jj at the helper and passes both directories through", () => {
     expect(renderToolConfig("/stage/apply.sh", "/stage")).toBe(
       [
-        "[merge-tools.hunk-stage]",
+        "[merge-tools.hunk-commit]",
         'program = "sh"',
         'edit-args = ["/stage/apply.sh", "$left", "$right", "/stage"]',
         "",
@@ -48,7 +48,7 @@ describe("buildStageArgs", () => {
       "split",
       "--interactive",
       "--tool",
-      "hunk-stage",
+      "hunk-commit",
       "--message=extracted work",
     ]);
   });
@@ -60,7 +60,7 @@ describe("buildStageArgs", () => {
       "squash",
       "--interactive",
       "--tool",
-      "hunk-stage",
+      "hunk-commit",
       "--into=@-",
     ]);
   });

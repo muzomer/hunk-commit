@@ -33,7 +33,7 @@ export function readTargetSetting(
 
   if (typeof configured !== "string" || configured.trim() === "") {
     log(
-      `Ignoring [extension.hunk-stage] target: expected "new" or a revset, got ${typeof configured}`,
+      `Ignoring [extension.hunk-commit] target: expected "new" or a revset, got ${typeof configured}`,
     );
     return DEFAULT_TARGET;
   }
@@ -72,7 +72,7 @@ export function readContextMarksSetting(
   }
 
   log(
-    `Ignoring [extension.hunk-stage] context_marks: expected ${CONTEXT_MARKS.join(", ")}, got ${JSON.stringify(configured)}`,
+    `Ignoring [extension.hunk-commit] context_marks: expected ${CONTEXT_MARKS.join(", ")}, got ${JSON.stringify(configured)}`,
   );
   return DEFAULT_CONTEXT_MARKS;
 }

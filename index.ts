@@ -29,7 +29,7 @@ import {
 import type { ContextMarks } from "./src/ui/highlights";
 
 /**
- * hunk-stage — mark hunks while reviewing, and stage them without leaving the
+ * hunk-commit — mark hunks while reviewing, and stage them without leaving the
  * review: into the git index, or into a Jujutsu revision.
  *
  * This file is the composition root and nothing else: it wires Hunk's

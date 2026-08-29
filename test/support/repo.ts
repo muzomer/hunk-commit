@@ -34,7 +34,7 @@ export async function hasJujutsu(): Promise<boolean> {
 export async function createTestRepository(): Promise<TestRepository> {
   // The config lives beside the workspace rather than inside it, so it never
   // shows up as an untracked file in the diffs under test.
-  const container = await mkdtemp(join(tmpdir(), "hunk-stage-jj-test-"));
+  const container = await mkdtemp(join(tmpdir(), "hunk-commit-jj-test-"));
   const root = join(container, "repo");
   await mkdir(root, { recursive: true });
   const configPath = join(container, "jj-config.toml");

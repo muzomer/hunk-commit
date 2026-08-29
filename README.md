@@ -1,4 +1,4 @@
-# hunk-stage
+# hunk-commit
 
 Mark hunks while you review in [Hunk](https://hunk.dev), and stage them without
 leaving the review — into the git index, or into a [Jujutsu](https://github.com/jj-vcs/jj)
@@ -20,13 +20,13 @@ change.
 ## Install
 
 ```bash
-hunk extension install <owner>/hunk-stage
+hunk extension install <owner>/hunk-commit
 ```
 
 Or, to iterate on a checkout:
 
 ```bash
-hunk diff --extension /path/to/hunk-stage
+hunk diff --extension /path/to/hunk-commit
 ```
 
 ## Use
@@ -55,15 +55,15 @@ still unstaged.
 
 Commands are rebindable by id in Hunk's `[keybindings]` table. **The ids come
 from the folder the extension is installed into**, so an install from a
-repository named `hunk-stage` gives `hunk-stage.toggleHunk`,
-`hunk-stage.toggleFile`, `hunk-stage.clearMarks`, `hunk-stage.stage`, and
-`hunk-stage.stageInto`.
+repository named `hunk-commit` gives `hunk-commit.toggleHunk`,
+`hunk-commit.toggleFile`, `hunk-commit.clearMarks`, `hunk-commit.stage`, and
+`hunk-commit.stageInto`.
 
 ### Config
 
 ```toml
 # ~/.config/hunk/config.toml
-[extension.hunk-stage]
+[extension.hunk-commit]
 target = "new"          # jj only, and the default: extract a new revision.
                         # Any revset instead — "@-", a change id — squashes into it.
                         # Ignored in git repositories.

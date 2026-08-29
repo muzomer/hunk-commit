@@ -47,7 +47,7 @@ export async function createStageDirectory(
     }
   }
 
-  const root = await mkdtemp(join(tmpdir(), "hunk-stage-"));
+  const root = await mkdtemp(join(tmpdir(), "hunk-commit-"));
 
   await Promise.all([
     writeFile(join(root, HELPER_SCRIPT_NAME), HELPER_SCRIPT, "utf8"),
