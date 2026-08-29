@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      # The jj suites skip themselves when the binary is missing, so CI has to
+      # install it — otherwise a whole backend goes green without being run.
+      - name: Install jj
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo jj-vcs/jj \
+            --pattern 'jj-*-x86_64-unknown-linux-musl.tar.gz' --output jj.tar.gz
+          tar -xzf jj.tar.gz ./jj
+          sudo install jj /usr/local/bin/jj
+          rm jj jj.tar.gz
+          jj --version
+
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun test
