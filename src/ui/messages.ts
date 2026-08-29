@@ -26,8 +26,6 @@ export const messages = {
 
   noWorkspace: "This review is not inside a git or Jujutsu workspace",
 
-  gitHasOneDestination: "In a git repository the index is the only destination — press S to stage",
-
   unsupportedPlatform:
     "Staging into Jujutsu needs a POSIX shell to hand jj the selection, which this platform does not provide",
 
@@ -108,6 +106,27 @@ export const messages = {
 
   chooseTarget: "Stage marked hunks where?",
 
+  chooseCommit: "Put the marked hunks into which commit?",
+
+  noCommitsAvailable:
+    "There is no unpushed commit here to put these hunks into — press C to make a new one",
+
+  confirmFixupTitle: (summary: MarkSummary, short: string, source: "marks" | "cursor") =>
+    `Put ${source === "cursor" ? "the hunk under the cursor" : plural(summary.hunks, "hunk")} into ${short}?`,
+
+  /**
+   * The message that has to correct an expectation. "Into an existing commit"
+   * sounds like history changes now, and it does not: what appears is one more
+   * commit, and the reviewer decides when to fold it in.
+   */
+  confirmFixupBody: (summary: MarkSummary, short: string, finish: string) =>
+    `${plural(summary.hunks, "hunk")} in ${plural(summary.files, "file")} will become a \`fixup!\` commit on top, ` +
+    `marked for ${short}. Nothing is rewritten now — fold it in when you are ready with \`${finish}\`.`,
+
+  fixedUp: (summary: MarkSummary, short: string, finish: string) =>
+    `Committed ${plural(summary.hunks, "hunk")} in ${plural(summary.files, "file")} as a \`fixup!\` for ${short} — ` +
+    `history is unchanged until you run \`${finish}\``,
+
   newRevisionOption: "A new revision",
 
   describeNewRevisionPlaceholder: "Description (optional)",
@@ -115,5 +134,4 @@ export const messages = {
   describeNewRevision: (summary: MarkSummary) =>
     `Describe the new revision (${plural(summary.hunks, "hunk")} in ${plural(summary.files, "file")})`,
 
-  noTargetsAvailable: "No mutable revision is available to stage into",
 } as const;

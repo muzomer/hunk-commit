@@ -40,8 +40,8 @@ Open a working-copy review (`hunk diff`), then:
 | `N` | Clear every mark |
 | `S` | Stage the marked hunks, or the one under the cursor |
 | `C` | Commit them, asking for a summary and an optional description |
+| `F` | Put them into a commit that already exists — pick it from a list |
 | `D` | Discard the marked hunks, or the one under the cursor — reverts them in your working copy |
-| `T` | jj only: pick where they go — a new revision, or one that exists |
 
 Marked lines are painted amber in the diff — a hue the diff's own green, red,
 and neutral do not use. By default only the lines that will actually move are
@@ -58,7 +58,7 @@ Commands are rebindable by id in Hunk's `[keybindings]` table. **The ids come
 from the folder the extension is installed into**, so an install from a
 repository named `hunk-commit` gives `hunk-commit.toggleHunk`,
 `hunk-commit.toggleFile`, `hunk-commit.clearMarks`, `hunk-commit.stage`,
-`hunk-commit.commit`, `hunk-commit.discard`, and `hunk-commit.stageInto`.
+`hunk-commit.commit`, `hunk-commit.into`, and `hunk-commit.discard`.
 
 ### Config
 
@@ -90,6 +90,23 @@ In git it refuses, before asking anything, when something is already staged
 (`git commit` would sweep it in) or when a rebase, merge, or cherry-pick is
 half-finished. If a `pre-commit` hook rejects the commit, the marked hunks are
 unstaged again, so the repository is exactly as it was.
+
+### Putting hunks into an existing commit
+
+`F` lists the commits you can still change and puts the marked hunks into the
+one you pick. Only unpushed commits are offered — `@{upstream}..HEAD`, or the
+recent history when the branch tracks nothing — so the picker cannot offer a
+commit that someone else may already have.
+
+What happens next differs, and the confirmation says which:
+
+- **In Jujutsu it happens now.** `jj squash` moves the hunks into the revision,
+  rebases its descendants, and records one operation that `jj undo` reverses.
+- **In git it is deferred.** A `fixup!` commit is added on top, naming the
+  target by its full hash — git matches a title *or* a hash, and titles repeat.
+  Nothing is rewritten until you run the `git rebase --autosquash --autostash`
+  command the message gives you, at a moment you choose. `--autostash` is part
+  of it because the hunks you did not mark are still in your working tree.
 
 ### Discarding
 
@@ -173,8 +190,9 @@ Staging is refused, with nothing written, when:
 - **Discarding is not a transaction.** Every file is checked before any file is
   written, so a refusal changes nothing — but an error partway through the
   writes leaves earlier files already reverted.
-- **`jj absorb` is not wired up** — routing each hunk to the ancestor that last
-  touched those lines would reuse the same machinery.
+- **Nothing routes hunks automatically.** `jj absorb` and `git absorb` send each
+  hunk to the commit that last touched those lines; `F` always asks instead, so
+  no commit is rewritten on a guess.
 - **Binary and oversized files are all-or-nothing** — Hunk shows no hunks for
   them, so `X` is the only way to stage them.
 - **Windows works for git, not jj.** The jj helper needs a POSIX shell; the

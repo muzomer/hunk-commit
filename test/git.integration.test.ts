@@ -3,8 +3,11 @@ import { access, chmod, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { createGitBackend } from "../src/git/backend";
 import { createGitCommitBackend, findCommitBlocker } from "../src/git/commit";
+import { autosquashCommand, createGitFixupBackend } from "../src/git/fixup";
+import { listFixupTargets } from "../src/git/history";
 import { createGit } from "../src/git/repository";
 import type { StagingBackend } from "../src/staging/backend";
+import type { CommitChoice } from "../src/git/history";
 import type { FileMark } from "../src/staging/plan";
 import { stageMarkedHunks, type StageOutcome } from "../src/staging/stage";
 import { createTestGitRepository, hasGit, type TestGitRepository } from "./support/gitRepo";
@@ -60,6 +63,9 @@ async function run(
 
 const stage = (marks: Record<string, FileMark>) =>
   run(marks, createGitBackend({ git: createGit({ root: repository.root }) }));
+
+const fixup = (marks: Record<string, FileMark>, target: CommitChoice) =>
+  run(marks, createGitFixupBackend({ git: createGit({ root: repository.root }), target }));
 
 const commit = (marks: Record<string, FileMark>, subject: string, body = "") =>
   run(
@@ -288,6 +294,83 @@ describeWithGit("committing", () => {
     // The rollback is the point: no commit, and an index as empty as before,
     // so pressing C again is not blocked by the failed attempt.
     expect(await repository.git("log", "-1", "--pretty=%s")).toBe("base\n");
+    expect(await repository.git("diff", "--cached")).toBe("");
+  });
+});
+
+/**
+ * Fixups: a second commit that says where its contents belong, and the rebase
+ * that later folds it in. The end-to-end test is the one that matters — a
+ * fixup that autosquash does not pick up is worse than no fixup at all.
+ */
+describeWithGit("fixing up an existing commit", () => {
+  beforeEach(async () => {
+    await repository.write("f.txt", numberedLines(20));
+    await repository.git("add", "-A");
+    await repository.git("commit", "-qm", "base");
+
+    await repository.write("g.txt", "second\n");
+    await repository.git("add", "-A");
+    await repository.git("commit", "-qm", "wip");
+
+    await repository.write(
+      "f.txt",
+      numberedLines(20)
+        .replace("line 3\n", "line 3 CHANGED\n")
+        .replace("line 17\n", "line 17 CHANGED\n"),
+    );
+  });
+
+  const targets = () => listFixupTargets(createGit({ root: repository.root }));
+
+  test("offers the branch's commits, newest first", async () => {
+    expect((await targets()).map((target) => target.label.split("  ")[1])).toEqual(["wip", "base"]);
+  });
+
+  test("adds a fixup on top without rewriting anything", async () => {
+    const [, base] = await targets();
+    const before = await repository.git("rev-parse", "HEAD");
+
+    const outcome = await fixup({ "f.txt": { kind: "hunks", hunks: new Set([0]) } }, base!);
+
+    expect(outcome).toEqual({ kind: "staged", files: 1, hunks: 1 });
+    expect(await repository.git("log", "-1", "--pretty=%s")).toBe(`fixup! ${base!.sha}\n`);
+
+    // The commit it points at, and everything after it, is untouched.
+    expect(await repository.git("rev-parse", "HEAD~1")).toBe(before);
+  });
+
+  test("autosquash folds the fixup into the commit it names", async () => {
+    const [wip] = await targets();
+
+    await fixup({ "f.txt": { kind: "hunks", hunks: new Set([0]) } }, wip!);
+    // The exact command the reviewer is told to run, unmarked hunks and all.
+    await repository.git(...autosquashCommand(wip!).split(" ").slice(1));
+
+    // Three commits went in, two come out, and the marked hunk is now part of
+    // the commit the reviewer picked rather than a separate one.
+    expect((await repository.git("log", "--pretty=%s")).split("\n").filter(Boolean)).toEqual([
+      "wip",
+      "base",
+    ]);
+    expect(changedLines(await repository.git("show", "--format=", "HEAD"))).toContain(
+      "+line 3 CHANGED",
+    );
+  });
+
+  test("marks the first commit as one that needs --root", async () => {
+    const [wip, base] = await targets();
+
+    expect(wip!.isRoot).toBe(false);
+    expect(base!.isRoot).toBe(true);
+  });
+
+  test("leaves the unmarked hunk in the working tree", async () => {
+    const [, base] = await targets();
+
+    await fixup({ "f.txt": { kind: "hunks", hunks: new Set([0]) } }, base!);
+
+    expect(changedLines(await repository.git("diff"))).toBe("-line 17\n+line 17 CHANGED");
     expect(await repository.git("diff", "--cached")).toBe("");
   });
 });

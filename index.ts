@@ -9,6 +9,8 @@ import type {
 import { discardMarkedHunks, type DiscardOutcome } from "./src/discard/discard";
 import { createGitBackend } from "./src/git/backend";
 import { createGitCommitBackend, findCommitBlocker } from "./src/git/commit";
+import { autosquashCommand, createGitFixupBackend } from "./src/git/fixup";
+import { listFixupTargets, type CommitChoice } from "./src/git/history";
 import { createGit, type Git } from "./src/git/repository";
 import { createJjBackend } from "./src/jj/backend";
 import { createJj, type Jj } from "./src/jj/repository";
@@ -104,17 +106,23 @@ export default function activate(hunk: HunkExtensionAPI): void {
     (ctx) => discard(ctx, session),
   );
 
+  // One key, two verbs. Both systems can put marked hunks into a commit that
+  // already exists, but they do it so differently — jj rewrites now and
+  // rebases descendants itself, git defers behind a `fixup!` — that the title
+  // is settled per repository rather than picking one word for both.
   hunk.registerCommand(
-    { id: "stageInto", title: "Stage marked hunks into…", key: "T" },
+    { id: "into", title: "Squash into… / Fixup…", key: "F" },
     async (ctx) => {
       const workspace = requireWorkspace(ctx);
       if (!workspace) {
         return;
       }
 
-      // Only Jujutsu offers a choice: git's index is the one place to stage to.
       if (workspace.kind === "git") {
-        ctx.notify(messages.gitHasOneDestination, "warning");
+        const target = await chooseCommit(ctx, createGit({ root: workspace.root }));
+        if (target) {
+          await stage(ctx, session, async (chosen) => fixupChoice(chosen, target));
+        }
         return;
       }
 
@@ -140,7 +148,9 @@ interface StagingChoice {
   readonly backend: StagingBackend;
   readonly confirmed: boolean;
   /** Which word the reporting uses: the hunks were staged, or committed. */
-  readonly action: "stage" | "commit";
+  readonly action: "stage" | "commit" | "fixup";
+  /** The command that completes the job, when one is left to run. */
+  readonly finish?: string;
 }
 
 /** Settle the destination, asking for anything only the reviewer can supply. */
@@ -266,6 +276,58 @@ async function pathExists(path: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Settle a fixup: the target is already chosen, so nothing more is asked here.
+ *
+ * The confirmation is left on, unlike committing: the reviewer picked a commit
+ * from a list, which is a smaller commitment than typing a message, and the
+ * thing worth saying — that history is *not* being rewritten yet — is said in
+ * that dialog.
+ */
+function fixupChoice(workspace: Workspace, target: CommitChoice): StagingChoice {
+  return {
+    backend: createGitFixupBackend({ git: createGit({ root: workspace.root }), target }),
+    confirmed: false,
+    action: "fixup",
+    finish: autosquashCommand(target),
+  };
+}
+
+/**
+ * Offer the commits this branch has not published.
+ *
+ * The pre-commit checks run here rather than after the pick, so a repository
+ * that cannot be committed to says so before asking the reviewer to choose.
+ */
+async function chooseCommit(
+  ctx: ExtensionCommandContext,
+  git: Git,
+): Promise<CommitChoice | null> {
+  try {
+    const blocker = await findCommitBlocker({ git, pathExists });
+    if (blocker) {
+      ctx.notify(messages.cannotCommit(blocker), "warning");
+      return null;
+    }
+
+    const targets = await listFixupTargets(git);
+    if (targets.length === 0) {
+      ctx.notify(messages.noCommitsAvailable, "warning");
+      return null;
+    }
+
+    const chosen = await ctx.dialogs.select({
+      title: messages.chooseCommit,
+      options: targets.map((target) => target.label),
+    });
+
+    return targets.find((target) => target.label === chosen) ?? null;
+  } catch (error) {
+    ctx.notify(messages.failed(describe(error)), "error");
+    return null;
   }
 }
 
@@ -409,10 +471,16 @@ async function stage(
   const { backend } = choice;
 
   if (!choice.confirmed) {
+    const isFixup = choice.action === "fixup";
+
     const confirmed = await ctx.dialogs.confirm({
-      title: messages.confirmTitle(summary, backend.destination, selection.source),
-      body: messages.confirmBody(summary, backend.destination, workspace.kind),
-      confirmLabel: "stage",
+      title: isFixup
+        ? messages.confirmFixupTitle(summary, backend.destination, selection.source)
+        : messages.confirmTitle(summary, backend.destination, selection.source),
+      body: isFixup
+        ? messages.confirmFixupBody(summary, backend.destination, choice.finish ?? "")
+        : messages.confirmBody(summary, backend.destination, workspace.kind),
+      confirmLabel: isFixup ? "commit" : "stage",
     });
 
     if (!confirmed) {
@@ -430,6 +498,7 @@ async function stage(
       destination: backend.destination,
       action: choice.action,
       kind: workspace.kind,
+      finish: choice.finish,
     });
   } catch (error) {
     ctx.notify(messages.failed(describe(error)), "error");
@@ -440,7 +509,7 @@ async function report(
   ctx: ExtensionCommandContext,
   session: ReviewSession,
   outcome: StageOutcome,
-  run: { destination: string; action: "stage" | "commit"; kind: "git" | "jj" },
+  run: RunDescription,
 ): Promise<void> {
   if (outcome.kind === "stale") {
     ctx.notify(messages.stale(outcome.path, outcome.detail), "warning");
@@ -457,11 +526,7 @@ async function report(
     return;
   }
 
-  ctx.notify(
-    run.action === "commit"
-      ? messages.committed(outcome, run.destination, run.kind)
-      : messages.staged(outcome, run.destination),
-  );
+  ctx.notify(successMessage(outcome, run));
   session.marks.clear();
   ctx.commands.execute("hunk.app.refresh");
 }
@@ -546,6 +611,29 @@ function reportDiscard(
   ctx.notify(messages.discarded(outcome, kind));
   session.marks.clear();
   ctx.commands.execute("hunk.app.refresh");
+}
+
+/** What a finished run was, in the terms its messages are written in. */
+interface RunDescription {
+  readonly destination: string;
+  readonly action: StagingChoice["action"];
+  readonly kind: "git" | "jj";
+  readonly finish?: string;
+}
+
+/** How one finished run reads, in the vocabulary of what it actually did. */
+function successMessage(
+  outcome: { files: number; hunks: number },
+  run: RunDescription,
+): string {
+  switch (run.action) {
+    case "commit":
+      return messages.committed(outcome, run.destination, run.kind);
+    case "fixup":
+      return messages.fixedUp(outcome, run.destination, run.finish ?? "");
+    case "stage":
+      return messages.staged(outcome, run.destination);
+  }
 }
 
 function describe(error: unknown): string {
