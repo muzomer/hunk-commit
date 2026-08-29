@@ -4,11 +4,8 @@ Mark hunks while you review in [Hunk](https://hunk.dev), and move them without
 leaving the review — into the git index, or into a commit: a git commit, or a
 [Jujutsu](https://github.com/jj-vcs/jj) revision.
 
-Whichever you choose, **your files on disk never change**. Moving a hunk moves
-ownership of a change, not the change itself: the marked hunks land in the
-index, a commit, or a revision, while everything you did not mark stays exactly
-where it was — the `git add -p` shape, extended to committing, and to Jujutsu,
-which has no index to hold anything.
+Whichever you choose, **your files on disk never change** — the `git add -p`
+shape, extended to committing, and to Jujutsu, which has no index.
 
 ## Requirements
 
@@ -20,7 +17,7 @@ which has no index to hold anything.
 ## Install
 
 ```bash
-hunk extension install <owner>/hunk-commit
+hunk extension install muzomer/hunk-commit
 ```
 
 Or, to iterate on a checkout:
@@ -37,21 +34,20 @@ Open a working-copy review (`hunk diff`), then:
 | --- | --- |
 | `x` | Mark or unmark the hunk under the cursor — only needed to batch several |
 | `X` | Mark or unmark the whole file — the only way to mark a binary or oversized file |
-| `N` | Clear every mark |
+| `N` | Clear all marks |
 | `S` | Stage the marked hunks, or the one under the cursor — git only |
-| `C` | Commit them, asking for a summary and an optional description |
-| `F` | Put them into a commit that already exists — pick it from a list |
+| `C` | Commit the marked hunks, asking for a summary and an optional description |
+| `F` | Add the marked hunks to a specific commit, selected from a list |
 | `D` | Discard the marked hunks, or the one under the cursor — reverts them in your working copy |
 
 Marked lines are painted amber in the diff — a hue the diff's own green, red,
 and neutral do not use. By default only the lines that will actually move are
 marked; `context_marks` (below) can extend that to the context lines around
 them, at the cost of making the marked region look larger than what moves,
-since a hunk carries up to three context lines on each side. A completely
-blank line stays untinted whatever you choose: marks colour characters, and a
-blank line has none to colour. Every one of these commands asks first — for a
-message, or for confirmation — names where the hunks are going, and reloads the
-review afterwards, so what you see is what is still unmoved.
+since a hunk carries up to three context lines on each side. Every one of these
+commands asks first — for a message, or for confirmation — names where the
+hunks are going, and reloads the review afterwards, so what you see is what is
+still unmoved.
 
 Commands are rebindable by id in Hunk's `[keybindings]` table. **The ids come
 from the folder the extension is installed into**, so an install from a

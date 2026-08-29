@@ -51,7 +51,7 @@ export default function activate(hunk: HunkExtensionAPI): void {
   });
 
   hunk.registerCommand(
-    { id: "toggleHunk", title: "Mark hunk for staging", key: "x" },
+    { id: "toggleHunk", title: "Mark hunk", key: "x" },
     (ctx) => {
       const file = ctx.selection.file;
       if (!file || ctx.selection.hunkIndex === null) {
@@ -65,7 +65,7 @@ export default function activate(hunk: HunkExtensionAPI): void {
   );
 
   hunk.registerCommand(
-    { id: "toggleFile", title: "Mark whole file for staging", key: "X" },
+    { id: "toggleFile", title: "Mark whole file", key: "X" },
     (ctx) => {
       const file = ctx.selection.file;
       if (!file) {
@@ -110,12 +110,12 @@ export default function activate(hunk: HunkExtensionAPI): void {
     (ctx) => discard(ctx, session),
   );
 
-  // One key, two verbs. Both systems can put marked hunks into a commit that
-  // already exists, but they do it so differently — jj rewrites now and
-  // rebases descendants itself, git defers behind a `fixup!` — that the title
-  // is settled per repository rather than picking one word for both.
+  // One key, two mechanisms. Both systems can put marked hunks into a commit
+  // that already exists, but jj rewrites it now and rebases its descendants
+  // while git defers behind a `fixup!`, so the menu entry stays neutral and
+  // each dialog names what its own repository is about to do.
   hunk.registerCommand(
-    { id: "into", title: "Squash into… / Fixup…", key: "F" },
+    { id: "into", title: "Put marked hunks into…", key: "F" },
     async (ctx) => {
       const workspace = requireWorkspace(ctx);
       if (!workspace) {
