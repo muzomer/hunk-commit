@@ -36,7 +36,8 @@ Open a working-copy review (`hunk diff`), then:
 | `X` | Mark or unmark the whole file — the only way to mark a binary or oversized file |
 | `N` | Clear all marks |
 | `S` | Stage the marked hunks, or the one under the cursor — git only |
-| `C` | Commit the marked hunks, asking for a summary and an optional description |
+| `C` | Commit the marked hunks, asking only for a summary |
+| `B` | Commit them with a description as well — one more question |
 | `F` | Add the marked hunks to a specific commit, selected from a list |
 | `D` | Discard the marked hunks, or the one under the cursor — reverts them in your working copy |
 
@@ -53,7 +54,8 @@ Commands are rebindable by id in Hunk's `[keybindings]` table. **The ids come
 from the folder the extension is installed into**, so an install from a
 repository named `hunk-commit` gives `hunk-commit.toggleHunk`,
 `hunk-commit.toggleFile`, `hunk-commit.clearMarks`, `hunk-commit.stage`,
-`hunk-commit.commit`, `hunk-commit.into`, and `hunk-commit.discard`.
+`hunk-commit.commit`, `hunk-commit.commitWithBody`, `hunk-commit.into`, and
+`hunk-commit.discard`.
 
 ### Config
 
@@ -71,10 +73,12 @@ rather than in a file.
 ### Committing
 
 `C` turns the marked hunks straight into a commit — a git commit on the current
-branch, or a new Jujutsu revision — instead of leaving them staged. It asks for
-a summary and then an optional description; an empty description is fine, and
-cancelling either question abandons the commit. Typing the message *is* the
-confirmation, so nothing asks again afterwards.
+branch, or a new Jujutsu revision — instead of leaving them staged. It asks one
+question, the summary, and commits. `B` is the same command with a description:
+Hunk's input dialog holds a single line, so a body costs a second question, and
+only the key that promises one asks it. Cancelling any question abandons the
+commit, and typing the message *is* the confirmation, so nothing asks again
+afterwards.
 
 In git it refuses, before asking anything, when something is already staged
 (`git commit` would sweep it in) or when a rebase, merge, or cherry-pick is

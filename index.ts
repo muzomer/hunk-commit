@@ -101,8 +101,20 @@ export default function activate(hunk: HunkExtensionAPI): void {
     await stage(ctx, session, async () => indexChoice(workspace));
   });
 
+  // Two commands rather than one that always asks twice. Hunk's input dialog
+  // holds a single line, so a description costs a second modal — and a second
+  // modal nobody asked for is worse than no description at all. Whoever wants
+  // one says so up front, by pressing a different key.
   hunk.registerCommand({ id: "commit", title: "Commit marked hunks", key: "C" }, (ctx) =>
-    stage(ctx, session, (workspace, summary) => commitChoice(ctx, workspace, summary)),
+    stage(ctx, session, (workspace, summary) => commitChoice(ctx, workspace, summary, "subject")),
+  );
+
+  hunk.registerCommand(
+    { id: "commitWithBody", title: "Commit marked hunks with a description…", key: "B" },
+    (ctx) =>
+      stage(ctx, session, (workspace, summary) =>
+        commitChoice(ctx, workspace, summary, "subject-and-body"),
+      ),
   );
 
   hunk.registerCommand(
@@ -192,6 +204,7 @@ async function commitChoice(
   ctx: ExtensionCommandContext,
   workspace: Workspace,
   summary: MarkSummary,
+  asking: MessageParts,
 ): Promise<StagingChoice | null> {
   const git: Git | null = workspace.kind === "git" ? createGit({ root: workspace.root }) : null;
 
@@ -203,7 +216,7 @@ async function commitChoice(
     }
   }
 
-  const message = await askCommitMessage(ctx, summary);
+  const message = await askCommitMessage(ctx, summary, asking);
   if (!message) {
     return null;
   }
@@ -220,17 +233,20 @@ async function commitChoice(
   };
 }
 
+/** How much of the message this run asks for — one dialog, or two. */
+type MessageParts = "subject" | "subject-and-body";
+
 /**
- * Ask for the commit message, one line at a time.
+ * Ask for the commit message, one line per dialog.
  *
- * Hunk's input dialog is single-line, so the summary and the description are
- * two questions. Cancelling either abandons the commit; submitting an empty
- * description simply means there is none. An empty *summary* is treated as a
- * cancellation too — a commit with no subject is never what someone meant.
+ * Cancelling any question abandons the commit; submitting an empty description
+ * simply means there is none. An empty *summary* is treated as a cancellation
+ * too — a commit with no subject is never what someone meant.
  */
 async function askCommitMessage(
   ctx: ExtensionCommandContext,
   summary: MarkSummary,
+  asking: MessageParts,
 ): Promise<CommitMessage | null> {
   const subject = await ctx.dialogs.input({
     title: messages.describeCommit(summary),
@@ -239,6 +255,10 @@ async function askCommitMessage(
 
   if (subject === null || subject.trim() === "") {
     return null;
+  }
+
+  if (asking === "subject") {
+    return { subject: subject.trim(), body: "" };
   }
 
   const body = await ctx.dialogs.input({
