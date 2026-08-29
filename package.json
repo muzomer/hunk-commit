@@ -1,7 +1,7 @@
 {
   "name": "hunk-commit",
   "version": "0.1.0",
-  "description": "Mark hunks while reviewing in Hunk and stage them — into the git index, or into a Jujutsu revision",
+  "description": "Mark hunks while reviewing in Hunk and stage, commit, or fix up with them — in git or Jujutsu",
   "license": "MIT",
   "type": "module",
   "hunk": {
