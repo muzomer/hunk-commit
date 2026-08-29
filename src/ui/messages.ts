@@ -1,3 +1,5 @@
+import type { CommitBlocker } from "../git/commit";
+
 /**
  * Everything this extension says to a reviewer.
  *
@@ -41,6 +43,34 @@ export const messages = {
   staged: (summary: MarkSummary, destination: string) =>
     `Staged ${plural(summary.hunks, "hunk")} in ${plural(summary.files, "file")} into ${destination}`,
 
+  describeCommit: (summary: MarkSummary) =>
+    `Commit ${plural(summary.hunks, "hunk")} in ${plural(summary.files, "file")} — describe it`,
+
+  describeCommitPlaceholder: "One line: what this change does",
+
+  describeCommitBody: "Longer description (optional) — Enter to skip",
+
+  describeCommitBodyPlaceholder: "Why, or anything the summary leaves out",
+
+  /**
+   * Said after the commit exists, and it names the way back. Both systems can
+   * undo this one, which is worth saying: a commit made by accident from a
+   * review is exactly the moment someone wants to know that.
+   */
+  committed: (summary: MarkSummary, destination: string, kind: "git" | "jj") =>
+    `Committed ${plural(summary.hunks, "hunk")} in ${plural(summary.files, "file")} into ${destination} — ` +
+    (kind === "jj" ? "`jj undo` reverses it" : "undo with `git reset --soft HEAD~1`"),
+
+  /**
+   * Refusals from the pre-commit checks. Each one names the obstacle, the way
+   * to clear it, and how to come back — a reviewer should never have to guess
+   * what the extension objected to.
+   */
+  cannotCommit: (blocker: CommitBlocker) =>
+    blocker === "index-not-empty"
+      ? "Something is already staged in the index, and committing would include it. Commit or unstage it first (`git restore --staged .`), then press C again."
+      : "A rebase, merge, or cherry-pick is half-finished here. Finish or abort it first, then press C again.",
+
   confirmDiscardTitle: (summary: MarkSummary, source: "marks" | "cursor") =>
     `Discard ${source === "cursor" ? "the hunk under the cursor" : plural(summary.hunks, "hunk")}?`,
 
@@ -73,7 +103,8 @@ export const messages = {
   disagreement: (path: string, detail: string) =>
     `Refusing to stage ${path}: ${detail}. This is a bug — please report it.`,
 
-  failed: (detail: string) => `jj could not stage the selection: ${detail}`,
+  /** Whatever the backend reported, whichever backend it was. */
+  failed: (detail: string) => `Could not finish: ${detail}`,
 
   chooseTarget: "Stage marked hunks where?",
 

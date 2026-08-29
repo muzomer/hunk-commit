@@ -1,8 +1,8 @@
 # hunk-commit
 
-Mark hunks while you review in [Hunk](https://hunk.dev), and stage them without
-leaving the review — into the git index, or into a [Jujutsu](https://github.com/jj-vcs/jj)
-revision.
+Mark hunks while you review in [Hunk](https://hunk.dev), and move them without
+leaving the review — into the git index, or into a commit: a git commit, or a
+[Jujutsu](https://github.com/jj-vcs/jj) revision.
 
 Either way, **your files on disk never change**. Staging moves ownership of a
 change, not the change itself: in git the marked hunks land in the index, and
@@ -37,8 +37,9 @@ Open a working-copy review (`hunk diff`), then:
 | --- | --- |
 | `x` | Mark or unmark the hunk under the cursor — only needed to batch several |
 | `X` | Mark or unmark the whole file — the only way to mark a binary or oversized file |
-| `C` | Clear every mark |
+| `N` | Clear every mark |
 | `S` | Stage the marked hunks, or the one under the cursor |
+| `C` | Commit them, asking for a summary and an optional description |
 | `D` | Discard the marked hunks, or the one under the cursor — reverts them in your working copy |
 | `T` | jj only: pick where they go — a new revision, or one that exists |
 
@@ -56,8 +57,8 @@ still unstaged.
 Commands are rebindable by id in Hunk's `[keybindings]` table. **The ids come
 from the folder the extension is installed into**, so an install from a
 repository named `hunk-commit` gives `hunk-commit.toggleHunk`,
-`hunk-commit.toggleFile`, `hunk-commit.clearMarks`, `hunk-commit.stage`, and
-`hunk-commit.stageInto`.
+`hunk-commit.toggleFile`, `hunk-commit.clearMarks`, `hunk-commit.stage`,
+`hunk-commit.commit`, `hunk-commit.discard`, and `hunk-commit.stageInto`.
 
 ### Config
 
@@ -76,6 +77,19 @@ marking hunks and pressing `S` carves a finished piece out from under it,
 rewriting nothing that already exists. Set a revset instead if you work the
 other way, keeping `@` as scratch above the change you are building and
 squashing down into it as you go.
+
+### Committing
+
+`C` turns the marked hunks straight into a commit — a git commit on the current
+branch, or a new Jujutsu revision — instead of leaving them staged. It asks for
+a summary and then an optional description; an empty description is fine, and
+cancelling either question abandons the commit. Typing the message *is* the
+confirmation, so nothing asks again afterwards.
+
+In git it refuses, before asking anything, when something is already staged
+(`git commit` would sweep it in) or when a rebase, merge, or cherry-pick is
+half-finished. If a `pre-commit` hook rejects the commit, the marked hunks are
+unstaged again, so the repository is exactly as it was.
 
 ### Discarding
 

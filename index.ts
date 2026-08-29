@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type {
   ExtensionCommandContext,
@@ -8,13 +8,15 @@ import type {
 } from "hunkdiff/extension";
 import { discardMarkedHunks, type DiscardOutcome } from "./src/discard/discard";
 import { createGitBackend } from "./src/git/backend";
-import { createGit } from "./src/git/repository";
+import { createGitCommitBackend, findCommitBlocker } from "./src/git/commit";
+import { createGit, type Git } from "./src/git/repository";
 import { createJjBackend } from "./src/jj/backend";
 import { createJj, type Jj } from "./src/jj/repository";
 import { listStagingTargets } from "./src/jj/revisions";
 import type { JjDestination } from "./src/jj/tool";
 import { parseFilePatch } from "./src/patch/parse";
 import type { StagingBackend } from "./src/staging/backend";
+import { joinCommitMessage, type CommitMessage } from "./src/staging/message";
 import { stageMarkedHunks, type StageOutcome } from "./src/staging/stage";
 import { detectWorkspace, type Workspace } from "./src/workspace";
 import { buildMarkHighlights } from "./src/ui/highlights";
@@ -29,8 +31,9 @@ import {
 import type { ContextMarks } from "./src/ui/highlights";
 
 /**
- * hunk-commit — mark hunks while reviewing, and stage them without leaving the
- * review: into the git index, or into a Jujutsu revision.
+ * hunk-commit — mark hunks while reviewing, and move them without leaving the
+ * review: into the git index, or into a commit — a git commit, or a Jujutsu
+ * revision.
  *
  * This file is the composition root and nothing else: it wires Hunk's
  * commands, events, and highlights to the modules that hold the behaviour.
@@ -80,7 +83,7 @@ export default function activate(hunk: HunkExtensionAPI): void {
     },
   );
 
-  hunk.registerCommand({ id: "clearMarks", title: "Clear staging marks", key: "C" }, (ctx) => {
+  hunk.registerCommand({ id: "clearMarks", title: "Clear marks", key: "N" }, (ctx) => {
     session.marks.clear();
     ctx.highlights.refresh(HIGHLIGHTER_ID);
     ctx.notify(messages.cleared);
@@ -90,6 +93,10 @@ export default function activate(hunk: HunkExtensionAPI): void {
     stage(ctx, session, (workspace, summary) =>
       resolveChoice(ctx, summary, workspace, defaultTarget),
     ),
+  );
+
+  hunk.registerCommand({ id: "commit", title: "Commit marked hunks", key: "C" }, (ctx) =>
+    stage(ctx, session, (workspace, summary) => commitChoice(ctx, workspace, summary)),
   );
 
   hunk.registerCommand(
@@ -132,6 +139,8 @@ export default function activate(hunk: HunkExtensionAPI): void {
 interface StagingChoice {
   readonly backend: StagingBackend;
   readonly confirmed: boolean;
+  /** Which word the reporting uses: the hunks were staged, or committed. */
+  readonly action: "stage" | "commit";
 }
 
 /** Settle the destination, asking for anything only the reviewer can supply. */
@@ -142,7 +151,11 @@ async function resolveChoice(
   target: TargetSetting,
 ): Promise<StagingChoice | null> {
   if (workspace.kind === "git") {
-    return { backend: createGitBackend({ git: createGit({ root: workspace.root }) }), confirmed: false };
+    return {
+      backend: createGitBackend({ git: createGit({ root: workspace.root }) }),
+      confirmed: false,
+      action: "stage",
+    };
   }
 
   let destination: JjDestination;
@@ -165,7 +178,95 @@ async function resolveChoice(
   return {
     backend: createJjBackend({ jj: createJj({ root: workspace.root }), destination }),
     confirmed: target.kind === "new",
+    action: "stage",
   };
+}
+
+/**
+ * Settle a commit: refuse early if the repository is not ready, then ask.
+ *
+ * The order matters. Git's checks run *before* the reviewer types anything,
+ * because asking for a commit message and only then refusing to commit wastes
+ * the one thing they had to supply. Jujutsu needs no such check: it has no
+ * index to sweep up, and a rewrite in progress is not a state it can be in.
+ *
+ * No confirmation follows, because typing a message is the confirmation —
+ * asking "commit?" straight after "describe your commit" is one question too
+ * many about the same decision.
+ */
+async function commitChoice(
+  ctx: ExtensionCommandContext,
+  workspace: Workspace,
+  summary: MarkSummary,
+): Promise<StagingChoice | null> {
+  const git: Git | null = workspace.kind === "git" ? createGit({ root: workspace.root }) : null;
+
+  if (git) {
+    const blocker = await findCommitBlocker({ git, pathExists });
+    if (blocker) {
+      ctx.notify(messages.cannotCommit(blocker), "warning");
+      return null;
+    }
+  }
+
+  const message = await askCommitMessage(ctx, summary);
+  if (!message) {
+    return null;
+  }
+
+  return {
+    backend: git
+      ? createGitCommitBackend({ git, message })
+      : createJjBackend({
+          jj: createJj({ root: workspace.root }),
+          destination: { kind: "new", message: joinCommitMessage(message) },
+        }),
+    confirmed: true,
+    action: "commit",
+  };
+}
+
+/**
+ * Ask for the commit message, one line at a time.
+ *
+ * Hunk's input dialog is single-line, so the summary and the description are
+ * two questions. Cancelling either abandons the commit; submitting an empty
+ * description simply means there is none. An empty *summary* is treated as a
+ * cancellation too — a commit with no subject is never what someone meant.
+ */
+async function askCommitMessage(
+  ctx: ExtensionCommandContext,
+  summary: MarkSummary,
+): Promise<CommitMessage | null> {
+  const subject = await ctx.dialogs.input({
+    title: messages.describeCommit(summary),
+    placeholder: messages.describeCommitPlaceholder,
+  });
+
+  if (subject === null || subject.trim() === "") {
+    return null;
+  }
+
+  const body = await ctx.dialogs.input({
+    title: messages.describeCommitBody,
+    placeholder: messages.describeCommitBodyPlaceholder,
+  });
+
+  if (body === null) {
+    return null;
+  }
+
+  return { subject: subject.trim(), body: body.trim() };
+}
+
+/** Whether a path exists, for the checks in `src/git/commit.ts`. */
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Paint one file's marked hunks, or nothing if its patch cannot be read. */
@@ -325,7 +426,11 @@ async function stage(
       readWorkingCopyFile: (path) => readFile(join(workspace.root, path), "utf8"),
     });
 
-    await report(ctx, session, outcome, backend.destination);
+    await report(ctx, session, outcome, {
+      destination: backend.destination,
+      action: choice.action,
+      kind: workspace.kind,
+    });
   } catch (error) {
     ctx.notify(messages.failed(describe(error)), "error");
   }
@@ -335,7 +440,7 @@ async function report(
   ctx: ExtensionCommandContext,
   session: ReviewSession,
   outcome: StageOutcome,
-  destination: string,
+  run: { destination: string; action: "stage" | "commit"; kind: "git" | "jj" },
 ): Promise<void> {
   if (outcome.kind === "stale") {
     ctx.notify(messages.stale(outcome.path, outcome.detail), "warning");
@@ -352,7 +457,11 @@ async function report(
     return;
   }
 
-  ctx.notify(messages.staged(outcome, destination));
+  ctx.notify(
+    run.action === "commit"
+      ? messages.committed(outcome, run.destination, run.kind)
+      : messages.staged(outcome, run.destination),
+  );
   session.marks.clear();
   ctx.commands.execute("hunk.app.refresh");
 }

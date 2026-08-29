@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { readFile, rm } from "node:fs/promises";
+import { access, chmod, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { createGitBackend } from "../src/git/backend";
+import { createGitCommitBackend, findCommitBlocker } from "../src/git/commit";
 import { createGit } from "../src/git/repository";
+import type { StagingBackend } from "../src/staging/backend";
 import type { FileMark } from "../src/staging/plan";
 import { stageMarkedHunks, type StageOutcome } from "../src/staging/stage";
 import { createTestGitRepository, hasGit, type TestGitRepository } from "./support/gitRepo";
@@ -31,7 +33,10 @@ afterEach(async () => {
   await repository.dispose();
 });
 
-async function stage(marks: Record<string, FileMark>): Promise<StageOutcome> {
+async function run(
+  marks: Record<string, FileMark>,
+  backend: StagingBackend,
+): Promise<StageOutcome> {
   const files = reviewFromPatch(await repository.git("diff"));
   const byPath = new Map(files.map((file) => [file.path, file.id]));
   const marksById = new Map(
@@ -47,11 +52,32 @@ async function stage(marks: Record<string, FileMark>): Promise<StageOutcome> {
   return stageMarkedHunks(
     { files, marks: marksById },
     {
-      backend: createGitBackend({ git: createGit({ root: repository.root }) }),
+      backend,
       readWorkingCopyFile: (path) => readFile(join(repository.root, path), "utf8"),
     },
   );
 }
+
+const stage = (marks: Record<string, FileMark>) =>
+  run(marks, createGitBackend({ git: createGit({ root: repository.root }) }));
+
+const commit = (marks: Record<string, FileMark>, subject: string, body = "") =>
+  run(
+    marks,
+    createGitCommitBackend({
+      git: createGit({ root: repository.root }),
+      message: { subject, body },
+    }),
+  );
+
+const pathExists = async (path: string) => {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 const changedLines = (patch: string) =>
   patch
@@ -175,5 +201,93 @@ describeWithGit("staging whole-file changes", () => {
     expect(outcome).toEqual({ kind: "nothing-staged" });
     expect(await repository.git("diff", "--cached")).toBe("");
     expect(changedLines(await repository.git("diff"))).toBe("-base\n+changed");
+  });
+});
+
+/**
+ * Committing, which is staging plus `git commit` — and the checks that keep
+ * that second command from taking more than the reviewer marked.
+ */
+describeWithGit("committing", () => {
+  beforeEach(async () => {
+    await repository.write("f.txt", numberedLines(20));
+    await repository.git("add", "-A");
+    await repository.git("commit", "-qm", "base");
+
+    await repository.write(
+      "f.txt",
+      numberedLines(20)
+        .replace("line 3\n", "line 3 CHANGED\n")
+        .replace("line 17\n", "line 17 CHANGED\n"),
+    );
+  });
+
+  test("commits only the marked hunk and leaves the rest uncommitted", async () => {
+    const before = await repository.read("f.txt");
+
+    const outcome = await commit({ "f.txt": { kind: "hunks", hunks: new Set([0]) } }, "feat: three");
+
+    expect(outcome).toEqual({ kind: "staged", files: 1, hunks: 1 });
+    expect(await repository.git("log", "-1", "--pretty=%s")).toBe("feat: three\n");
+    expect(changedLines(await repository.git("show", "--format=", "HEAD"))).toBe(
+      "-line 3\n+line 3 CHANGED",
+    );
+
+    // The second hunk is still uncommitted, and the file on disk is untouched.
+    expect(changedLines(await repository.git("diff"))).toBe("-line 17\n+line 17 CHANGED");
+    expect(await repository.read("f.txt")).toBe(before);
+  });
+
+  test("writes the description as the commit body, separated by a blank line", async () => {
+    await commit({ "f.txt": { kind: "whole" } }, "feat: both", "because the review said so");
+
+    expect(await repository.git("log", "-1", "--pretty=%B")).toBe(
+      "feat: both\n\nbecause the review said so\n\n",
+    );
+  });
+
+  test("refuses when something is already staged, which a commit would sweep in", async () => {
+    await repository.write("other.txt", "unrelated\n");
+    await repository.git("add", "other.txt");
+
+    const blocker = await findCommitBlocker({
+      git: createGit({ root: repository.root }),
+      pathExists: pathExists,
+    });
+
+    expect(blocker).toBe("index-not-empty");
+  });
+
+  test("refuses while a rebase is half-finished", async () => {
+    await repository.git("commit", "-qam", "second");
+    await repository.git("commit", "-q", "--allow-empty", "-m", "third");
+
+    // Accept the todo list, then fail an --exec so the rebase stops partway
+    // and leaves its state directory behind — the situation being detected.
+    await repository
+      .git("-c", "core.editor=true", "rebase", "-i", "--exec", "false", "HEAD~2")
+      .catch(() => undefined);
+
+    const blocker = await findCommitBlocker({
+      git: createGit({ root: repository.root }),
+      pathExists: pathExists,
+    });
+
+    expect(blocker).toBe("operation-in-progress");
+  });
+
+  test("leaves nothing staged when a hook refuses the commit", async () => {
+    const hook = join(repository.root, ".git", "hooks", "pre-commit");
+    await Bun.write(hook, "#!/bin/sh\nexit 1\n");
+    await chmod(hook, 0o755);
+
+    const attempt = commit({ "f.txt": { kind: "hunks", hunks: new Set([0]) } }, "feat: refused");
+
+    await expect(attempt).rejects.toThrow();
+
+    // The rollback is the point: no commit, and an index as empty as before,
+    // so pressing C again is not blocked by the failed attempt.
+    expect(await repository.git("log", "-1", "--pretty=%s")).toBe("base\n");
+    expect(await repository.git("diff", "--cached")).toBe("");
   });
 });
