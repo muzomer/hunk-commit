@@ -104,12 +104,18 @@ export const messages = {
   /** Whatever the backend reported, whichever backend it was. */
   failed: (detail: string) => `Could not finish: ${detail}`,
 
-  chooseTarget: "Stage marked hunks where?",
+  jjHasNoIndex: "Jujutsu has no index — press C to commit these hunks, or F to put them into a revision",
 
-  chooseCommit: "Put the marked hunks into which commit?",
+  chooseCommit: (kind: "git" | "jj") =>
+    kind === "git"
+      ? "Put the marked hunks into which commit?"
+      : "Squash the marked hunks into which revision?",
 
-  noCommitsAvailable:
-    "There is no unpushed commit here to put these hunks into — press C to make a new one",
+  noCommitsAvailable: (kind: "git" | "jj") =>
+    (kind === "git"
+      ? "There is no unpushed commit here to put these hunks into"
+      : "There is no mutable revision here to squash these hunks into") +
+    " — press C to make a new one",
 
   confirmFixupTitle: (summary: MarkSummary, short: string, source: "marks" | "cursor") =>
     `Put ${source === "cursor" ? "the hunk under the cursor" : plural(summary.hunks, "hunk")} into ${short}?`,
@@ -127,11 +133,6 @@ export const messages = {
     `Committed ${plural(summary.hunks, "hunk")} in ${plural(summary.files, "file")} as a \`fixup!\` for ${short} — ` +
     `history is unchanged until you run \`${finish}\``,
 
-  newRevisionOption: "A new revision",
 
-  describeNewRevisionPlaceholder: "Description (optional)",
-
-  describeNewRevision: (summary: MarkSummary) =>
-    `Describe the new revision (${plural(summary.hunks, "hunk")} in ${plural(summary.files, "file")})`,
 
 } as const;

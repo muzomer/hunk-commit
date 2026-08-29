@@ -15,7 +15,6 @@ import { createGit, type Git } from "./src/git/repository";
 import { createJjBackend } from "./src/jj/backend";
 import { createJj, type Jj } from "./src/jj/repository";
 import { listStagingTargets } from "./src/jj/revisions";
-import type { JjDestination } from "./src/jj/tool";
 import { parseFilePatch } from "./src/patch/parse";
 import type { StagingBackend } from "./src/staging/backend";
 import { joinCommitMessage, type CommitMessage } from "./src/staging/message";
@@ -24,12 +23,7 @@ import { detectWorkspace, type Workspace } from "./src/workspace";
 import { buildMarkHighlights } from "./src/ui/highlights";
 import { messages, type MarkSummary } from "./src/ui/messages";
 import { ReviewSession, type Selection } from "./src/ui/session";
-import {
-  destinationFor,
-  readContextMarksSetting,
-  readTargetSetting,
-  type TargetSetting,
-} from "./src/ui/settings";
+import { readContextMarksSetting } from "./src/ui/settings";
 import type { ContextMarks } from "./src/ui/highlights";
 
 /**
@@ -46,7 +40,6 @@ const HIGHLIGHTER_ID = "marks";
 
 export default function activate(hunk: HunkExtensionAPI): void {
   const session = new ReviewSession();
-  const defaultTarget = readTargetSetting(hunk.config, (message) => hunk.log(message));
   const contextMarks = readContextMarksSetting(hunk.config, (message) => hunk.log(message));
 
   hunk.on("changeset_loaded", ({ changeset }) => session.reload(changeset.files));
@@ -91,11 +84,22 @@ export default function activate(hunk: HunkExtensionAPI): void {
     ctx.notify(messages.cleared);
   });
 
-  hunk.registerCommand({ id: "stage", title: "Stage marked hunks", key: "S" }, (ctx) =>
-    stage(ctx, session, (workspace, summary) =>
-      resolveChoice(ctx, summary, workspace, defaultTarget),
-    ),
-  );
+  hunk.registerCommand({ id: "stage", title: "Stage marked hunks", key: "S" }, async (ctx) => {
+    const workspace = requireWorkspace(ctx);
+    if (!workspace) {
+      return;
+    }
+
+    // Staging is git's word for a place jj does not have. Rather than quietly
+    // doing something else here — splitting a revision, as this command used
+    // to — it names the two keys that do have a meaning in a jj workspace.
+    if (workspace.kind === "jj") {
+      ctx.notify(messages.jjHasNoIndex, "warning");
+      return;
+    }
+
+    await stage(ctx, session, async () => indexChoice(workspace));
+  });
 
   hunk.registerCommand({ id: "commit", title: "Commit marked hunks", key: "C" }, (ctx) =>
     stage(ctx, session, (workspace, summary) => commitChoice(ctx, workspace, summary)),
@@ -126,11 +130,9 @@ export default function activate(hunk: HunkExtensionAPI): void {
         return;
       }
 
-      const target = await chooseTarget(ctx, createJj({ root: workspace.root }));
-      if (target) {
-        await stage(ctx, session, (chosen, summary) =>
-          resolveChoice(ctx, summary, chosen, target),
-        );
+      const revset = await chooseRevision(ctx, createJj({ root: workspace.root }));
+      if (revset) {
+        await stage(ctx, session, async (chosen) => squashChoice(chosen, revset));
       }
     },
   );
@@ -153,41 +155,23 @@ interface StagingChoice {
   readonly finish?: string;
 }
 
-/** Settle the destination, asking for anything only the reviewer can supply. */
-async function resolveChoice(
-  ctx: ExtensionCommandContext,
-  summary: MarkSummary,
-  workspace: Workspace,
-  target: TargetSetting,
-): Promise<StagingChoice | null> {
-  if (workspace.kind === "git") {
-    return {
-      backend: createGitBackend({ git: createGit({ root: workspace.root }) }),
-      confirmed: false,
-      action: "stage",
-    };
-  }
-
-  let destination: JjDestination;
-
-  if (target.kind === "new") {
-    const message = await ctx.dialogs.input({
-      title: messages.describeNewRevision(summary),
-      placeholder: messages.describeNewRevisionPlaceholder,
-    });
-
-    if (message === null) {
-      return null;
-    }
-
-    destination = destinationFor(target, message.trim());
-  } else {
-    destination = destinationFor(target, "");
-  }
-
+/** Stage into git's index: one destination, so there is nothing to settle. */
+function indexChoice(workspace: Workspace): StagingChoice {
   return {
-    backend: createJjBackend({ jj: createJj({ root: workspace.root }), destination }),
-    confirmed: target.kind === "new",
+    backend: createGitBackend({ git: createGit({ root: workspace.root }) }),
+    confirmed: false,
+    action: "stage",
+  };
+}
+
+/** Squash into a Jujutsu revision the reviewer has already picked. */
+function squashChoice(workspace: Workspace, revset: string): StagingChoice {
+  return {
+    backend: createJjBackend({
+      jj: createJj({ root: workspace.root }),
+      destination: { kind: "revision", revset },
+    }),
+    confirmed: false,
     action: "stage",
   };
 }
@@ -315,12 +299,12 @@ async function chooseCommit(
 
     const targets = await listFixupTargets(git);
     if (targets.length === 0) {
-      ctx.notify(messages.noCommitsAvailable, "warning");
+      ctx.notify(messages.noCommitsAvailable("git"), "warning");
       return null;
     }
 
     const chosen = await ctx.dialogs.select({
-      title: messages.chooseCommit,
+      title: messages.chooseCommit("git"),
       options: targets.map((target) => target.label),
     });
 
@@ -401,25 +385,20 @@ function requireWorkspace(ctx: ExtensionCommandContext): Workspace | null {
  * A new revision comes first because it rewrites nothing that already exists;
  * the rest are the mutable ancestors a squash could fold into.
  */
-async function chooseTarget(
-  ctx: ExtensionCommandContext,
-  jj: Jj,
-): Promise<TargetSetting | null> {
+async function chooseRevision(ctx: ExtensionCommandContext, jj: Jj): Promise<string | null> {
   try {
     const revisions = await listStagingTargets(jj);
-    const options = [messages.newRevisionOption, ...revisions.map((choice) => choice.label)];
-
-    const chosen = await ctx.dialogs.select({ title: messages.chooseTarget, options });
-    if (chosen === null) {
+    if (revisions.length === 0) {
+      ctx.notify(messages.noCommitsAvailable("jj"), "warning");
       return null;
     }
 
-    if (chosen === messages.newRevisionOption) {
-      return { kind: "new" };
-    }
+    const chosen = await ctx.dialogs.select({
+      title: messages.chooseCommit("jj"),
+      options: revisions.map((choice) => choice.label),
+    });
 
-    const revision = revisions.find((choice) => choice.label === chosen)?.revision;
-    return revision ? { kind: "revision", revset: revision } : null;
+    return revisions.find((choice) => choice.label === chosen)?.revision ?? null;
   } catch (error) {
     ctx.notify(messages.failed(describe(error)), "error");
     return null;

@@ -4,11 +4,11 @@ Mark hunks while you review in [Hunk](https://hunk.dev), and move them without
 leaving the review — into the git index, or into a commit: a git commit, or a
 [Jujutsu](https://github.com/jj-vcs/jj) revision.
 
-Either way, **your files on disk never change**. Staging moves ownership of a
-change, not the change itself: in git the marked hunks land in the index, and
-in jj they are extracted into their own revision — the `git add -p` shape,
-without an index to hold them — while the rest stays in the working-copy
-change.
+Whichever you choose, **your files on disk never change**. Moving a hunk moves
+ownership of a change, not the change itself: the marked hunks land in the
+index, a commit, or a revision, while everything you did not mark stays exactly
+where it was — the `git add -p` shape, extended to committing, and to Jujutsu,
+which has no index to hold anything.
 
 ## Requirements
 
@@ -38,7 +38,7 @@ Open a working-copy review (`hunk diff`), then:
 | `x` | Mark or unmark the hunk under the cursor — only needed to batch several |
 | `X` | Mark or unmark the whole file — the only way to mark a binary or oversized file |
 | `N` | Clear every mark |
-| `S` | Stage the marked hunks, or the one under the cursor |
+| `S` | Stage the marked hunks, or the one under the cursor — git only |
 | `C` | Commit them, asking for a summary and an optional description |
 | `F` | Put them into a commit that already exists — pick it from a list |
 | `D` | Discard the marked hunks, or the one under the cursor — reverts them in your working copy |
@@ -49,10 +49,9 @@ marked; `context_marks` (below) can extend that to the context lines around
 them, at the cost of making the marked region look larger than what moves,
 since a hunk carries up to three context lines on each side. A completely
 blank line stays untinted whatever you choose: marks colour characters, and a
-blank line has none to colour. Staging asks first — for a description
-when it is extracting a new revision, otherwise for confirmation — names its
-destination, and reloads the review, so what you see afterwards is what is
-still unstaged.
+blank line has none to colour. Every one of these commands asks first — for a
+message, or for confirmation — names where the hunks are going, and reloads the
+review afterwards, so what you see is what is still unmoved.
 
 Commands are rebindable by id in Hunk's `[keybindings]` table. **The ids come
 from the folder the extension is installed into**, so an install from a
@@ -65,18 +64,13 @@ repository named `hunk-commit` gives `hunk-commit.toggleHunk`,
 ```toml
 # ~/.config/hunk/config.toml
 [extension.hunk-commit]
-target = "new"          # jj only, and the default: extract a new revision.
-                        # Any revset instead — "@-", a change id — squashes into it.
-                        # Ignored in git repositories.
 context_marks = "none"  # how much of a marked hunk's context lines is marked:
                         # "none" (default), "edge" (a thin rail), "full".
 ```
 
-`"new"` suits the working style where `@` *is* the change you are building:
-marking hunks and pressing `S` carves a finished piece out from under it,
-rewriting nothing that already exists. Set a revset instead if you work the
-other way, keeping `@` as scratch above the change you are building and
-squashing down into it as you go.
+There is no configured destination: `C` always makes a new commit and `F`
+always asks which existing one, so where a hunk lands is decided in the review
+rather than in a file.
 
 ### Committing
 
@@ -185,8 +179,10 @@ Staging is refused, with nothing written, when:
 
 - **Working-copy reviews only.** Rebuilding a file reads it from the working
   copy, so `hunk show <rev>` and range diffs are not stageable.
-- **Staging only, not unstaging.** `hunk diff --staged` plus a reversed patch
-  would give git unstaging; it is not wired up.
+- **No unstaging.** `hunk diff --staged` plus a reversed patch would give git
+  unstaging; it is not wired up. `U` is left free for it.
+- **`S` is git's alone.** Jujutsu has no index, so there is nothing to stage
+  into: `C` and `F` are its two destinations.
 - **Discarding is not a transaction.** Every file is checked before any file is
   written, so a refusal changes nothing — but an error partway through the
   writes leaves earlier files already reverted.
