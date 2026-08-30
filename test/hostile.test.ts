@@ -42,6 +42,24 @@ function patchRenamingFrom(from: string): string {
   ].join("\n");
 }
 
+/**
+ * A patch whose header carries `modeLines` — the shapes git uses to name a
+ * file's type. An unchanged mode rides on the `index` line; a changed one is
+ * spelled out; a created or deleted file names it once.
+ */
+function patchWithModeLines(...modeLines: readonly string[]): string {
+  return [
+    "diff --git a/link b/link",
+    ...modeLines,
+    "--- a/link",
+    "+++ b/link",
+    "@@ -1,1 +1,1 @@",
+    "-before",
+    "+after",
+    "",
+  ].join("\n");
+}
+
 const ESCAPING = "../../outside.txt";
 const WHOLE: FileMark = { kind: "whole" };
 
@@ -133,6 +151,54 @@ describe("a patch naming a path outside the workspace", () => {
   });
 });
 
+describe("a patch describing something that is not a regular file", () => {
+  /**
+   * Git stores a symlink as a file whose content is its target and a submodule
+   * as a file whose content is a commit id, so both arrive looking like
+   * ordinary one-line text. Only the mode says otherwise, and writing either
+   * back as text is wrong however contained the path is — a symlink would be
+   * followed to wherever it points.
+   */
+  const shapes = [
+    ["a symlink whose target changed", patchWithModeLines("index d43b9f..636062 120000")],
+    ["a new symlink", patchWithModeLines("new file mode 120000", "index 000000..636062")],
+    ["a deleted symlink", patchWithModeLines("deleted file mode 120000", "index 636062..000000")],
+    [
+      "a symlink turning into a regular file",
+      patchWithModeLines("old mode 120000", "new mode 100644", "index d43b9f..636062"),
+    ],
+    ["a submodule", patchWithModeLines("index d43b9f..636062 160000")],
+    ["a mode nobody here has reasoned about", patchWithModeLines("index d43b9f..636062 100777")],
+  ] as const;
+
+  test.each(shapes)("is refused before staging touches anything: %s", async (_name, patchText) => {
+    const { outcome, touched } = await stage(patchText);
+
+    expect(outcome.kind).toBe("unsupported-type");
+    expect(touched).toEqual([]);
+  });
+
+  test.each(shapes)(
+    "is refused before discarding touches anything: %s",
+    async (_name, patchText) => {
+      const { outcome, touched } = await discard(patchText);
+
+      expect(outcome.kind).toBe("unsupported-type");
+      expect(touched).toEqual([]);
+    },
+  );
+
+  test("says what the file is, so the refusal is actionable", async () => {
+    const { outcome } = await discard(patchWithModeLines("index d43b9f..636062 120000"));
+
+    expect(outcome).toMatchObject({
+      kind: "unsupported-type",
+      path: "link",
+      detail: expect.stringContaining("symbolic link"),
+    });
+  });
+});
+
 describe("an ordinary patch", () => {
   test("still stages", async () => {
     const { outcome, touched } = await stage(patchNaming("src/f.txt"));
@@ -146,5 +212,15 @@ describe("an ordinary patch", () => {
 
     expect(outcome.kind).toBe("discarded");
     expect(touched).toContain("write src/f.txt");
+  });
+
+  test.each([
+    ["a plain file", "index d43b9f..636062 100644"],
+    ["an executable file", "index d43b9f..636062 100755"],
+    ["a file that gained its executable bit", "old mode 100644\nnew mode 100755"],
+  ])("stages when its mode is a regular one: %s", async (_name, modeLine) => {
+    const { outcome } = await stage(patchWithModeLines(modeLine));
+
+    expect(outcome.kind).toBe("staged");
   });
 });

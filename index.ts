@@ -1,5 +1,5 @@
-import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { access, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type {
   ExtensionCommandContext,
   ExtensionDiffFile,
@@ -7,6 +7,7 @@ import type {
   HunkExtensionAPI,
 } from "hunkdiff/extension";
 import { discardMarkedHunks, type DiscardOutcome } from "./src/discard/discard";
+import { createWorkingCopyEnvironment } from "./src/discard/workingCopy";
 import { createGitBackend } from "./src/git/backend";
 import { createGitCommitBackend, findCommitBlocker } from "./src/git/commit";
 import { autosquashCommand, createGitFixupBackend } from "./src/git/fixup";
@@ -525,6 +526,11 @@ async function report(
     return;
   }
 
+  if (outcome.kind === "unsupported-type") {
+    ctx.notify(messages.unsupportedType(outcome.path, outcome.detail), "error");
+    return;
+  }
+
   if (outcome.kind === "nothing-staged") {
     ctx.notify(messages.nothingToStage, "warning");
     return;
@@ -568,17 +574,11 @@ async function discard(ctx: ExtensionCommandContext, session: ReviewSession): Pr
     return;
   }
 
-  const resolve = (path: string) => join(workspace.root, path);
-
   try {
-    const outcome = await discardMarkedHunks(request, {
-      readWorkingCopyFile: (path) => readFile(resolve(path), "utf8"),
-      writeWorkingCopyFile: async (path, content) => {
-        await mkdir(dirname(resolve(path)), { recursive: true });
-        await writeFile(resolve(path), content, "utf8");
-      },
-      removeWorkingCopyFile: (path) => rm(resolve(path), { force: true }),
-    });
+    const outcome = await discardMarkedHunks(
+      request,
+      createWorkingCopyEnvironment(workspace.root),
+    );
 
     reportDiscard(ctx, session, outcome, workspace.kind);
   } catch (error) {
@@ -604,6 +604,11 @@ function reportDiscard(
 
   if (outcome.kind === "unsafe-path") {
     ctx.notify(messages.unsafePath(outcome.path, outcome.detail), "error");
+    return;
+  }
+
+  if (outcome.kind === "unsupported-type") {
+    ctx.notify(messages.unsupportedType(outcome.path, outcome.detail), "error");
     return;
   }
 

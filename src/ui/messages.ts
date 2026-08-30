@@ -104,6 +104,9 @@ export const messages = {
   unsafePath: (path: string, detail: string) =>
     `Refusing to touch ${JSON.stringify(path)}: ${detail}. Nothing was changed — no ordinary diff names a file this way, so this is a bug or a patch worth being suspicious of. Please report it.`,
 
+  unsupportedType: (path: string, detail: string) =>
+    `Cannot act on ${path}: ${detail}. Nothing was changed — use your VCS directly for this file.`,
+
   /** Whatever the backend reported, whichever backend it was. */
   failed: (detail: string) => `Could not finish: ${detail}`,
 

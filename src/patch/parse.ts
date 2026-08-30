@@ -50,6 +50,14 @@ export interface FilePatch {
   /** The old path, present only for a rename. */
   readonly previousPath?: string;
   readonly change: FileChangeKind;
+  /**
+   * Every file mode the header names, in the order it names them.
+   *
+   * Both sides, not just the new one: a patch that turns a symlink into a
+   * regular file declares the symlink on the old side only, and the working
+   * copy it is about to be written to still holds the symlink.
+   */
+  readonly declaredModes: readonly string[];
   /** True when the patch carries no usable text hunks because the file is binary. */
   readonly binary: boolean;
   readonly hunks: readonly PatchHunk[];
@@ -81,6 +89,7 @@ interface Header {
   renamedFrom?: string;
   renamedTo?: string;
   explicitChange?: "added" | "deleted";
+  modes: string[];
   binary: boolean;
   /** Index of the first line that is not part of the header. */
   bodyStart: number;
@@ -107,8 +116,29 @@ function parseGitLinePaths(rest: string): { old: string; new: string } | undefin
   return candidates.find((candidate) => candidate.old === candidate.new) ?? candidates[0];
 }
 
+/**
+ * Note a mode named by a header line, ignoring anything that is not one.
+ *
+ * Lenient on purpose: an unrecognised field is not a mode, and a mode this
+ * does not collect is one `unsupportedModeReason` never gets to reject. The
+ * strictness belongs there, where an unknown mode is refused rather than
+ * assumed harmless.
+ */
+function recordMode(header: Header, value: string): void {
+  const mode = value.trim();
+  if (/^\d{6}$/.test(mode)) {
+    header.modes.push(mode);
+  }
+}
+
 function parseHeader(lines: readonly string[]): Header {
-  const header: Header = { oldPath: "", newPath: "", binary: false, bodyStart: lines.length };
+  const header: Header = {
+    oldPath: "",
+    newPath: "",
+    modes: [],
+    binary: false,
+    bodyStart: lines.length,
+  };
 
   for (const [index, line] of lines.entries()) {
     if (HUNK_HEADER.test(line)) {
@@ -128,8 +158,18 @@ function parseHeader(lines: readonly string[]): Header {
       header.renamedTo = line.slice("rename to ".length);
     } else if (line.startsWith("new file mode")) {
       header.explicitChange = "added";
+      recordMode(header, line.slice("new file mode".length));
     } else if (line.startsWith("deleted file mode")) {
       header.explicitChange = "deleted";
+      recordMode(header, line.slice("deleted file mode".length));
+    } else if (line.startsWith("old mode ")) {
+      recordMode(header, line.slice("old mode ".length));
+    } else if (line.startsWith("new mode ")) {
+      recordMode(header, line.slice("new mode ".length));
+    } else if (line.startsWith("index ")) {
+      // `index <old>..<new> <mode>`, where the mode appears only when it did
+      // not change — a changed one is on the `old mode`/`new mode` lines above.
+      recordMode(header, line.slice("index ".length).split(" ").slice(1).join(" "));
     } else if (line.startsWith("Binary files ") || line.startsWith("GIT binary patch")) {
       header.binary = true;
     }
@@ -258,6 +298,7 @@ export function parseFilePatch(patchText: string): FilePatch {
   return {
     ...resolvePaths(header),
     headerLines: lines.slice(0, header.bodyStart),
+    declaredModes: header.modes,
     binary: header.binary,
     hunks,
   };

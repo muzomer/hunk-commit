@@ -1,6 +1,7 @@
 import { parseDocument, type Document } from "../patch/document";
 import { findDisagreement, type HostHunk } from "../patch/agreement";
 import { parseFilePatch, type FilePatch } from "../patch/parse";
+import { unsupportedModeReason } from "../patch/modes";
 import { unsafePathReason } from "../patch/paths";
 import { findStaleHunk } from "../patch/select";
 import { disposeFile, requiresWorkingCopyCheck, type FileDisposition, type FileMark } from "../staging/plan";
@@ -21,12 +22,15 @@ export interface ReviewedFile {
  * ways, so they are reported separately. `unsafe-path` is a different kind of
  * answer: not "this is out of date" but "this patch names a file no diff of a
  * working copy could name", which is a bug here or a patch from somewhere it
- * should not have come from.
+ * should not have come from. `unsupported-type` is a third: the patch is
+ * perfectly well formed and names a real file, but the file is not one this
+ * extension can rebuild from text.
  */
 export type ReviewRefusal =
   | { readonly kind: "stale"; readonly path: string; readonly detail: string }
   | { readonly kind: "disagreement"; readonly path: string; readonly detail: string }
-  | { readonly kind: "unsafe-path"; readonly path: string; readonly detail: string };
+  | { readonly kind: "unsafe-path"; readonly path: string; readonly detail: string }
+  | { readonly kind: "unsupported-type"; readonly path: string; readonly detail: string };
 
 /** One reviewed file, once every check has passed and its fate is known. */
 export interface CheckedFile {
@@ -79,6 +83,16 @@ export async function checkReviewedFile(
   const unsafe = findUnsafePath(patch);
   if (unsafe) {
     return unsafe;
+  }
+
+  // Immediately after the path check and for the same reason: this is the one
+  // place both backends pass through, so refusing here is what keeps a symlink
+  // out of the git write in `discard` and out of the jj staging directory at
+  // once. Checked for every file, marked or not — an unmarked file still
+  // becomes a `restore` instruction in a jj revision.
+  const unsupportedMode = unsupportedModeReason(patch.declaredModes);
+  if (unsupportedMode !== null) {
+    return { kind: "unsupported-type", path: patch.path, detail: unsupportedMode };
   }
 
   const disagreement = findDisagreement(patch, file.hostHunks);

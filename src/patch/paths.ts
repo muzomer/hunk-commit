@@ -8,6 +8,10 @@
  * `/etc/x`, not an error. So containment has to be established before the
  * join, never by it.
  *
+ * This settles the path *text* only. Where the path leads is a separate
+ * question — a symlink escapes without a suspicious path anywhere — and is
+ * answered by `unsupportedModeReason` and by the write sites themselves.
+ *
  * Refusing costs nothing, because no working copy can describe what this
  * rejects: git and jj both emit repo-root-relative paths from any directory,
  * and git's one cwd-relative mode (`--relative`) omits files outside the cwd
