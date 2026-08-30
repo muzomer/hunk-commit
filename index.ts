@@ -520,6 +520,11 @@ async function report(
     return;
   }
 
+  if (outcome.kind === "unsafe-path") {
+    ctx.notify(messages.unsafePath(outcome.path, outcome.detail), "error");
+    return;
+  }
+
   if (outcome.kind === "nothing-staged") {
     ctx.notify(messages.nothingToStage, "warning");
     return;
@@ -594,6 +599,11 @@ function reportDiscard(
 
   if (outcome.kind === "disagreement") {
     ctx.notify(messages.disagreement(outcome.path, outcome.detail), "error");
+    return;
+  }
+
+  if (outcome.kind === "unsafe-path") {
+    ctx.notify(messages.unsafePath(outcome.path, outcome.detail), "error");
     return;
   }
 
