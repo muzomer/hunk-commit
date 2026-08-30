@@ -71,11 +71,8 @@ backup/
 *.db-shm
 db.sqlite
 bd.db
-# NOTE: Do NOT add negation patterns here.
-# They would override fork protection in .git/info/exclude.
-# Config files (metadata.json, config.yaml) are tracked by git by default
-# since no pattern above ignores them.
-# Shared project state — created by `bd init`, same for every clone.
+issues.jsonl
+
 !.gitignore
 !README.md
 !config.yaml
