@@ -7,6 +7,10 @@ leaving the review — into the git index, or into a commit: a git commit, or a
 Whichever you choose, **your files on disk never change** — the `git add -p`
 shape, extended to committing, and to Jujutsu, which has no index.
 
+![Two hunks of a fix marked amber in a Hunk review, then C, then a one-line
+summary prompt, then the review reloads with those hunks gone and an unrelated
+typo left behind.](demo/hero.gif)
+
 ## Requirements
 
 - Hunk 0.20 or newer (extension API v8)
@@ -30,15 +34,15 @@ hunk diff --extension /path/to/hunk-commit
 
 Open a working-copy review (`hunk diff`), then:
 
-| Key | Does |
-| --- | --- |
-| `x` | Mark or unmark the hunk under the cursor — only needed to batch several |
-| `X` | Mark or unmark the whole file — the only way to mark a binary or oversized file |
-| `N` | Clear all marks |
-| `S` | Stage the marked hunks, or the one under the cursor — git only |
-| `C` | Commit the marked hunks, asking only for a summary |
-| `B` | Commit them with a description as well — one more question |
-| `F` | Add the marked hunks to a specific commit, selected from a list |
+| Key | Does                                                                                      |
+| --- | ----------------------------------------------------------------------------------------- |
+| `x` | Mark or unmark the hunk under the cursor — only needed to batch several                   |
+| `X` | Mark or unmark the whole file — the only way to mark a binary or oversized file           |
+| `N` | Clear all marks                                                                           |
+| `S` | Stage the marked hunks, or the one under the cursor — git only                            |
+| `C` | Commit the marked hunks, asking only for a summary                                        |
+| `B` | Commit them with a description as well — one more question                                |
+| `F` | Add the marked hunks to a specific commit, selected from a list                           |
 | `D` | Discard the marked hunks, or the one under the cursor — reverts them in your working copy |
 
 Marked lines are painted amber in the diff — a hue the diff's own green, red,
@@ -77,13 +81,17 @@ branch, or a new Jujutsu revision — instead of leaving them staged. It asks on
 question, the summary, and commits. `B` is the same command with a description:
 Hunk's input dialog holds a single line, so a body costs a second question, and
 only the key that promises one asks it. Cancelling any question abandons the
-commit, and typing the message *is* the confirmation, so nothing asks again
+commit, and typing the message _is_ the confirmation, so nothing asks again
 afterwards.
 
 In git it refuses, before asking anything, when something is already staged
 (`git commit` would sweep it in) or when a rebase, merge, or cherry-pick is
 half-finished. If a `pre-commit` hook rejects the commit, the marked hunks are
 unstaged again, so the repository is exactly as it was.
+
+![Pressing B on a marked hunk: a dialog asking for the summary, a second
+dialog asking for an optional longer description, then the hunk committed and
+gone from the review.](demo/commit.gif)
 
 ### Putting hunks into an existing commit
 
@@ -97,10 +105,14 @@ What happens next differs, and the confirmation says which:
 - **In Jujutsu it happens now.** `jj squash` moves the hunks into the revision,
   rebases its descendants, and records one operation that `jj undo` reverses.
 - **In git it is deferred.** A `fixup!` commit is added on top, naming the
-  target by its full hash — git matches a title *or* a hash, and titles repeat.
+  target by its full hash — git matches a title _or_ a hash, and titles repeat.
   Nothing is rewritten until you run the `git rebase --autosquash --autostash`
   command the message gives you, at a moment you choose. `--autostash` is part
   of it because the hunks you did not mark are still in your working tree.
+
+![In a Jujutsu workspace, pressing F on a marked hunk: a picker of the commits
+that can still be changed, a confirmation naming the revision and the jj undo
+that reverses it, then the squash landing immediately.](demo/into.gif)
 
 ### Discarding
 
@@ -125,10 +137,14 @@ binary file is refused rather than guessed at, because the patch carries no
 record of what it held before — revert those with `jj restore` or
 `git restore`.
 
+![Marking one hunk and pressing D in a git repository: a confirmation naming
+what is about to be lost, then the hunk reverting in the working copy while
+the unmarked changes stay.](demo/discard.gif)
+
 ## How it works
 
 The marking half is shared. The applying half is not, because the two systems
-disagree about what staging *is*.
+disagree about what staging _is_.
 
 **Git** has an index, so staging is a patch applied to it. `hunk diff` in a git
 repository is a bare `git diff` — the working tree against the index — so a
@@ -194,13 +210,6 @@ Staging is refused, with nothing written, when:
 - **Windows works for git, not jj.** The jj helper needs a POSIX shell; the
   seam for a PowerShell version is `src/jj/script.ts`.
 
-### Compared with `hunk-git-lite`
-
-[`hunk-git-lite`](https://github.com/joshedler/hunk-git-lite) also stages from
-inside Hunk, at **file** granularity, with a status pane showing staged and
-unstaged sections. This extension works at **hunk** granularity and covers
-Jujutsu as well, but has no status pane. They are complementary.
-
 ## Development
 
 ```bash
@@ -213,21 +222,21 @@ The integration tests build real git and jj repositories in temp directories
 and drive the real binaries end to end; each suite skips itself when its binary
 is missing.
 
-Layout:
+### Recording the demo GIFs
 
-| Path | Holds |
-| --- | --- |
-| `index.ts` | composition root: Hunk commands, events, highlights |
-| `src/patch/` | parsing patches, rebuilding files, writing a patch back out |
-| `src/staging/` | the backend port, and what each file contributes |
-| `src/git/` | the index backend |
-| `src/jj/` | the revision backend, and jj's diff-editor protocol |
-| `src/ui/` | marks, painted highlights, wording, settings |
-| `src/workspace.ts` | which system a review sits in — jj wins a colocated tie |
+The GIFs above are recordings of the real extension, not mockups. Regenerate
+one after changing a key, a prompt, or a confirmation:
 
-`src/` never imports from `index.ts`, nothing under `src/patch/` touches the
-filesystem, and neither backend knows the other exists.
+```bash
+./demo/record.sh hero      # or: commit, into, discard
+```
 
-## License
+It needs `vhs`, `ttyd`, and `ffmpeg` alongside the usual toolchain. Each run
+builds a throwaway repository (`demo/fixture.ts`), installs this extension into
+a config directory of its own — so no other extension, theme, or update notice
+of yours reaches the frame — then records `demo/<name>.tape` and checks the
+result: a size budget, a length budget, and a last frame that differs from the
+first, which is what catches a recording of a TUI that never took a keystroke.
 
-MIT
+GIFs are binary, so a Hunk review cannot show you what changed. Watch the file
+before committing it.
