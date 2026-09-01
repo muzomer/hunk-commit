@@ -1,0 +1,69 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // best-practices over recommended mainly for helpers:pinGitHubActionDigests.
+  // ci.yml already SHA-pins actions by hand, but a hand-pinned SHA is frozen
+  // forever: we get the supply-chain benefit and none of the security updates.
+  // The preset keeps the pin *and* moves it.
+  extends: [
+    "config:best-practices",
+    "schedule:weekly",
+  ],
+
+  // Cooldown against compromised uploads. The npm attack pattern is a malicious
+  // patch release that gets detected and unpublished within hours to a few days,
+  // so a 7-day window means we never see it.
+  //
+  // Both settings are required. minimumReleaseAge alone only marks an internal
+  // check as pending — Renovate still opens the PR, and with automerge enabled
+  // that PR can merge itself the moment the check flips green, unreviewed.
+  // "strict" suppresses the PR entirely until the version is old enough, which
+  // turns the cooldown from a delay into an actual filter.
+  minimumReleaseAge: "7 days",
+  internalChecksFilter: "strict",
+
+  // The cooldown above would also delay a release that exists to *fix* a CVE,
+  // making us less safe against the likelier threat. Security updates therefore
+  // skip the age rule and the weekly schedule. Requires Dependabot alerts to be
+  // enabled on the repo — without that, this fast-path never fires.
+  vulnerabilityAlerts: {
+    minimumReleaseAge: null,
+    schedule: ["at any time"],
+  },
+
+  // Kept on deliberately: with internalChecksFilter "strict", some updates are
+  // intentionally invisible. Without the dashboard, "no pending updates" and
+  // "three updates suppressed" look identical.
+  dependencyDashboard: true,
+
+  packageRules: [
+    // Every dependency here is a devDependency, nothing ships to a consumer,
+    // and the package is not published to npm — so the blast radius of a bad
+    // automerge is "CI is red on main and we revert", not "users are broken".
+    {
+      matchManagers: ["npm"],
+      matchDepTypes: ["devDependencies"],
+      matchUpdateTypes: ["patch", "minor"],
+      automerge: true,
+    },
+    {
+      matchManagers: ["github-actions"],
+      matchUpdateTypes: ["digest", "patch", "minor"],
+      automerge: true,
+    },
+
+    // hunkdiff is the one dependency CI cannot vouch for. It is imported only
+    // as `import type` (index.ts, src/ui/session.ts), so it is erased at compile
+    // time and never loaded at runtime — `bun test` passes identically on any
+    // version. Only `tsc --noEmit` covers it, and only for the 4 interfaces we
+    // import. It is also 0.x, where Renovate calls 0.20 -> 0.21 a "minor" even
+    // though that is breaking by convention. Green CI here means very little:
+    // read the changelog and load the extension in Hunk before merging.
+    //
+    // Listed last so it overrides the devDependencies rule above.
+    {
+      matchPackageNames: ["hunkdiff"],
+      automerge: false,
+    },
+  ],
+}

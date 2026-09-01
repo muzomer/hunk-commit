@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { readFile, rm } from "node:fs/promises";
+import { readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createJjBackend } from "../src/jj/backend";
 import type { JjDestination } from "../src/jj/tool";
@@ -201,6 +201,49 @@ describeWithJj("staging whole-file changes", () => {
 
     expect(await repository.jj("diff", "--git", "-r", "@-")).not.toContain("blob.bin");
     expect(await repository.jj("diff", "--git")).toContain("blob.bin");
+  });
+});
+
+describeWithJj("a symbolic link in the review", () => {
+  /**
+   * The reachable case, and the reason the type check sits in
+   * `checkReviewedFile` rather than at either write site. An *unmarked* file
+   * is never read from the working copy — leaving it behind is correct however
+   * stale it is — so nothing compares it against the patch. It still becomes a
+   * `restore` instruction for the helper script, whose `cp` resolves the
+   * destination: with a symlink there, the copy lands wherever it points,
+   * outside the directory jj handed us.
+   */
+  // Both sides of the link point outside the repository, because both are
+  // written to: the helper reads through the old target and writes through the
+  // new one.
+  const outside = (name: string) => join(repository.root, "..", name);
+
+  beforeEach(async () => {
+    await writeFile(outside("was.txt"), "old target\n", "utf8");
+    await writeFile(outside("now.txt"), "do not touch\n", "utf8");
+    await symlink(outside("was.txt"), join(repository.root, "link"));
+    await repository.write("text.txt", "before\n");
+    await repository.jj("commit", "-m", "base");
+
+    await rm(join(repository.root, "link"));
+    await symlink(outside("now.txt"), join(repository.root, "link"));
+    await repository.write("text.txt", "after\n");
+  });
+
+  test("refuses to stage the file it was not even marked on", async () => {
+    const outcome = await stage({ "text.txt": { kind: "whole" } });
+
+    expect(outcome).toMatchObject({ kind: "unsupported-type", path: "link" });
+  });
+
+  test("leaves the file outside the workspace untouched", async () => {
+    await stage({ "text.txt": { kind: "whole" } });
+
+    expect(await readFile(outside("now.txt"), "utf8")).toBe("do not touch\n");
+    expect(await readFile(outside("was.txt"), "utf8")).toBe("old target\n");
+    // Nothing moved either: the refusal happens before any backend runs.
+    expect(await repository.jj("diff", "--git")).toContain("text.txt");
   });
 });
 

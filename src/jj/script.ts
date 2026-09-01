@@ -26,11 +26,23 @@ left="$1"
 right="$2"
 stage="$3"
 
+# A symlink is unlinked before it is written to or copied over. Redirection
+# and cp both resolve the destination, so either would write *through* a link
+# in $right to wherever it points, outside the directory jj gave us. Written
+# as a function so set -e does not trip over a false test, the way a
+# test-and-rm one-liner would when the test fails.
+unlink_if_symlink() {
+  if [ -L "$1" ]; then
+    rm -f "$1"
+  fi
+}
+
 # Replace content by redirection rather than by copying: it leaves the file's
 # existing mode alone, so an executable bit survives being rewritten.
 while IFS= read -r path; do
   [ -n "$path" ] || continue
   mkdir -p "$right/$(dirname "$path")"
+  unlink_if_symlink "$right/$path"
   cat "$stage/${CONTENT_DIRECTORY}/$path" > "$right/$path"
 done < "$stage/${WRITE_MANIFEST}"
 
@@ -43,6 +55,7 @@ while IFS= read -r path; do
   [ -n "$path" ] || continue
   if [ -e "$left/$path" ]; then
     mkdir -p "$right/$(dirname "$path")"
+    unlink_if_symlink "$right/$path"
     cp -p "$left/$path" "$right/$path"
   else
     rm -f "$right/$path"

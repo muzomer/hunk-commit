@@ -1,6 +1,8 @@
 import { parseDocument, type Document } from "../patch/document";
 import { findDisagreement, type HostHunk } from "../patch/agreement";
 import { parseFilePatch, type FilePatch } from "../patch/parse";
+import { unsupportedModeReason } from "../patch/modes";
+import { unsafePathReason } from "../patch/paths";
 import { findStaleHunk } from "../patch/select";
 import { disposeFile, requiresWorkingCopyCheck, type FileDisposition, type FileMark } from "../staging/plan";
 
@@ -15,13 +17,20 @@ export interface ReviewedFile {
 /**
  * Why an operation stopped without touching anything.
  *
- * Both refusals mean the same thing to a reviewer — what you are looking at is
- * not what is on disk — but they are found in different ways, so they are
- * reported separately.
+ * `stale` and `disagreement` both mean the same thing to a reviewer — what you
+ * are looking at is not what is on disk — but they are found in different
+ * ways, so they are reported separately. `unsafe-path` is a different kind of
+ * answer: not "this is out of date" but "this patch names a file no diff of a
+ * working copy could name", which is a bug here or a patch from somewhere it
+ * should not have come from. `unsupported-type` is a third: the patch is
+ * perfectly well formed and names a real file, but the file is not one this
+ * extension can rebuild from text.
  */
 export type ReviewRefusal =
   | { readonly kind: "stale"; readonly path: string; readonly detail: string }
-  | { readonly kind: "disagreement"; readonly path: string; readonly detail: string };
+  | { readonly kind: "disagreement"; readonly path: string; readonly detail: string }
+  | { readonly kind: "unsafe-path"; readonly path: string; readonly detail: string }
+  | { readonly kind: "unsupported-type"; readonly path: string; readonly detail: string };
 
 /** One reviewed file, once every check has passed and its fate is known. */
 export interface CheckedFile {
@@ -34,17 +43,57 @@ export interface CheckedFile {
 /**
  * Check one file and decide what the marks say about it.
  *
- * Shared by staging and discarding, which ask the same two questions before
- * acting — does this extension read the patch the way Hunk does, and does the
- * patch still describe what is on disk — and differ only in what they do with
- * the answer.
+ * Shared by staging and discarding, which ask the same questions before
+ * acting — is this a path we may touch at all, does this extension read the
+ * patch the way Hunk does, and does the patch still describe what is on disk —
+ * and differ only in what they do with the answer.
  */
+/**
+ * The first path in a patch that must not be acted on.
+ *
+ * A rename carries two, and both are used: the new path is written, and the
+ * old one is restored from `$left` or rewritten when the rename is undone.
+ */
+function findUnsafePath(patch: FilePatch): ReviewRefusal | null {
+  const paths = patch.previousPath === undefined ? [patch.path] : [patch.path, patch.previousPath];
+
+  for (const path of paths) {
+    const reason = unsafePathReason(path);
+    if (reason !== null) {
+      return { kind: "unsafe-path", path, detail: reason };
+    }
+  }
+
+  return null;
+}
+
 export async function checkReviewedFile(
   file: ReviewedFile,
   mark: FileMark | undefined,
   readWorkingCopyFile: (path: string) => Promise<string>,
 ): Promise<CheckedFile | ReviewRefusal> {
   const patch = parseFilePatch(file.patchText);
+
+  // Before anything else, because everything else acts on these paths: this
+  // function reads `patch.path` below, discarding writes and deletes at it,
+  // and the jj staging directory is built from it. Checking here rather than
+  // at those three sites means none of them can be reached with a path that
+  // was never checked — including for files nobody marked, which still become
+  // `delete` and `restore` instructions in a jj revision.
+  const unsafe = findUnsafePath(patch);
+  if (unsafe) {
+    return unsafe;
+  }
+
+  // Immediately after the path check and for the same reason: this is the one
+  // place both backends pass through, so refusing here is what keeps a symlink
+  // out of the git write in `discard` and out of the jj staging directory at
+  // once. Checked for every file, marked or not — an unmarked file still
+  // becomes a `restore` instruction in a jj revision.
+  const unsupportedMode = unsupportedModeReason(patch.declaredModes);
+  if (unsupportedMode !== null) {
+    return { kind: "unsupported-type", path: patch.path, detail: unsupportedMode };
+  }
 
   const disagreement = findDisagreement(patch, file.hostHunks);
   if (disagreement) {

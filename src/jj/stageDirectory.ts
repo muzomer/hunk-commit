@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { StageOperation } from "./operations";
+import { unsafePathReason } from "../patch/paths";
 import {
   CONTENT_DIRECTORY,
   DELETE_MANIFEST,
@@ -20,8 +21,11 @@ export interface StageDirectory {
 }
 
 export class UnstageablePathError extends Error {
-  constructor(readonly path: string) {
-    super(`Cannot stage ${JSON.stringify(path)}: paths containing newlines are not supported.`);
+  constructor(
+    readonly path: string,
+    reason: string,
+  ) {
+    super(`Cannot stage ${JSON.stringify(path)}: ${reason}.`);
     this.name = "UnstageablePathError";
   }
 }
@@ -43,7 +47,21 @@ export async function createStageDirectory(
 ): Promise<StageDirectory> {
   for (const operation of operations) {
     if (!isExpressiblePath(operation.path)) {
-      throw new UnstageablePathError(operation.path);
+      throw new UnstageablePathError(
+        operation.path,
+        "paths containing newlines are not supported",
+      );
+    }
+
+    // `checkReviewedFile` has already refused a path that leaves the
+    // workspace, so this can only fire on a bug. It is here anyway because of
+    // what sits downstream: the helper script runs `rm -f` and a redirect
+    // against whatever these manifests name, and its quoting — which is
+    // correct — stops word-splitting without saying anything about `..`. The
+    // boundary in front of a shell should be able to refuse on its own.
+    const unsafe = unsafePathReason(operation.path);
+    if (unsafe !== null) {
+      throw new UnstageablePathError(operation.path, unsafe);
     }
   }
 

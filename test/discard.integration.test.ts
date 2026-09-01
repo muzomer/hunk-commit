@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readFile, readlink, rm, symlink } from "node:fs/promises";
+import { join } from "node:path";
 import { discardMarkedHunks, type DiscardOutcome } from "../src/discard/discard";
+import { createWorkingCopyEnvironment } from "../src/discard/workingCopy";
 import type { FileMark } from "../src/staging/plan";
 import { createTestRepository, hasJujutsu, type TestRepository } from "./support/repo";
 import { reviewFromPatch } from "./support/review";
@@ -42,17 +43,11 @@ async function discard(marks: Record<string, FileMark>): Promise<DiscardOutcome>
     }),
   );
 
-  const resolve = (path: string) => join(repository.root, path);
+  // The environment the extension itself builds, not a copy of it: a copy
+  // would keep passing while the real one wrote through a symlink.
   return discardMarkedHunks(
     { files, marks: marksById },
-    {
-      readWorkingCopyFile: (path) => readFile(resolve(path), "utf8"),
-      writeWorkingCopyFile: async (path, content) => {
-        await mkdir(dirname(resolve(path)), { recursive: true });
-        await writeFile(resolve(path), content, "utf8");
-      },
-      removeWorkingCopyFile: (path) => rm(resolve(path), { force: true }),
-    },
+    createWorkingCopyEnvironment(repository.root),
   );
 }
 
@@ -142,6 +137,38 @@ describeWithJj("discarding whole-file changes", () => {
 
     expect(outcome).toMatchObject({ kind: "unsupported", path: "blob.bin" });
     expect(await repository.jj("diff", "--git")).toContain("blob.bin");
+  });
+});
+
+describeWithJj("a symbolic link", () => {
+  /**
+   * Git and jj both store a symlink as a file whose content is its target, so
+   * one reaches the review looking like an ordinary one-line text file. What
+   * makes it dangerous is the destination, not the patch: a write at that path
+   * lands wherever the link points, which can be anywhere on the machine.
+   */
+  beforeEach(async () => {
+    await repository.write("secret.txt", "do not touch\n");
+    await symlink(join(repository.root, "secret.txt"), join(repository.root, "link"));
+    await repository.jj("commit", "-m", "base");
+
+    await rm(join(repository.root, "link"));
+    await symlink(join(repository.root, "elsewhere.txt"), join(repository.root, "link"));
+  });
+
+  test("is refused rather than rebuilt from its target text", async () => {
+    const outcome = await discard({ link: { kind: "whole" } });
+
+    expect(outcome).toMatchObject({ kind: "unsupported-type", path: "link" });
+  });
+
+  test("leaves the file it points at untouched", async () => {
+    await discard({ link: { kind: "whole" } });
+
+    expect(await repository.read("secret.txt")).toBe("do not touch\n");
+    expect(await readlink(join(repository.root, "link"))).toBe(
+      join(repository.root, "elsewhere.txt"),
+    );
   });
 });
 
