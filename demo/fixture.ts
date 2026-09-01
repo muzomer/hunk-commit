@@ -116,13 +116,28 @@ await git("commit", "-q", "-m", "feat: add the cart");
 if (backend === "jj") {
   // Colocated, so the recording shows jj driving a repository git also
   // understands — and `JJ_CONFIG` keeps the machine's real config out of it.
+  // That isolation has a cost: an empty config makes jj render every revision
+  // as "(no email set)", which lands in `F`'s commit picker, so the identity
+  // has to be written back in. It is written beside the repository, not in it:
+  // jj tracks the working copy, so a config in the root becomes a third
+  // changed file in the demo.
+  const jjConfig = join(root, "..", "jjconfig.toml");
+  await writeFile(
+    jjConfig,
+    `[user]
+name = "${IDENTITY.GIT_AUTHOR_NAME}"
+email = "${IDENTITY.GIT_AUTHOR_EMAIL}"
+`,
+    "utf8",
+  );
   await run("jj", ["git", "init", "--colocate"], {
     cwd: root,
-    env: { ...env, JJ_CONFIG: join(root, ".jjconfig.toml") },
+    env: { ...env, JJ_CONFIG: jjConfig },
   });
 }
 
 // The working-copy state the demo opens on.
 await writeAll(root, EDITED);
+
 
 console.log(root);

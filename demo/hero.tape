@@ -18,7 +18,7 @@ Set TypingSpeed 30ms
 # about where it is running, and `F` behaves differently in git and jj.
 # XDG_CONFIG_HOME must match the one record.sh installed the extension into.
 Hide
-Type `export PS1="git-demo ~/cart> " XDG_CONFIG_HOME=/tmp/hunk-commit-demo/config` Enter
+Type `export PS1="git-demo ~/cart> " XDG_CONFIG_HOME=/tmp/hunk-commit-demo/config HUNK_DISABLE_UPDATE_NOTICE=1` Enter
 Type "cd /tmp/hunk-commit-demo/cart && clear" Enter
 Show
 

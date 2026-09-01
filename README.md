@@ -89,6 +89,10 @@ In git it refuses, before asking anything, when something is already staged
 half-finished. If a `pre-commit` hook rejects the commit, the marked hunks are
 unstaged again, so the repository is exactly as it was.
 
+![Pressing B on a marked hunk: a dialog asking for the summary, a second
+dialog asking for an optional longer description, then the hunk committed and
+gone from the review.](demo/commit.gif)
+
 ### Putting hunks into an existing commit
 
 `F` lists the commits you can still change and puts the marked hunks into the
@@ -105,6 +109,10 @@ What happens next differs, and the confirmation says which:
   Nothing is rewritten until you run the `git rebase --autosquash --autostash`
   command the message gives you, at a moment you choose. `--autostash` is part
   of it because the hunks you did not mark are still in your working tree.
+
+![In a Jujutsu workspace, pressing F on a marked hunk: a picker of the commits
+that can still be changed, a confirmation naming the revision and the jj undo
+that reverses it, then the squash landing immediately.](demo/into.gif)
 
 ### Discarding
 
@@ -128,6 +136,10 @@ Discarding always asks first; there is no path that skips the confirmation. A
 binary file is refused rather than guessed at, because the patch carries no
 record of what it held before — revert those with `jj restore` or
 `git restore`.
+
+![Marking one hunk and pressing D in a git repository: a confirmation naming
+what is about to be lost, then the hunk reverting in the working copy while
+the unmarked changes stay.](demo/discard.gif)
 
 ## How it works
 
@@ -210,20 +222,24 @@ The integration tests build real git and jj repositories in temp directories
 and drive the real binaries end to end; each suite skips itself when its binary
 is missing.
 
-Layout:
+### Recording the demo GIFs
 
-| Path               | Holds                                                       |
-| ------------------ | ----------------------------------------------------------- |
-| `index.ts`         | composition root: Hunk commands, events, highlights         |
-| `src/patch/`       | parsing patches, rebuilding files, writing a patch back out |
-| `src/staging/`     | the backend port, and what each file contributes            |
-| `src/git/`         | the index backend                                           |
-| `src/jj/`          | the revision backend, and jj's diff-editor protocol         |
-| `src/ui/`          | marks, painted highlights, wording, settings                |
-| `src/workspace.ts` | which system a review sits in — jj wins a colocated tie     |
+The GIFs above are recordings of the real extension, not mockups. Regenerate
+one after changing a key, a prompt, or a confirmation:
 
-`src/` never imports from `index.ts`, nothing under `src/patch/` touches the
-filesystem, and neither backend knows the other exists.
+```bash
+./demo/record.sh hero      # or: commit, into, discard
+```
+
+It needs `vhs`, `ttyd`, and `ffmpeg` alongside the usual toolchain. Each run
+builds a throwaway repository (`demo/fixture.ts`), installs this extension into
+a config directory of its own — so no other extension, theme, or update notice
+of yours reaches the frame — then records `demo/<name>.tape` and checks the
+result: a size budget, a length budget, and a last frame that differs from the
+first, which is what catches a recording of a TUI that never took a keystroke.
+
+GIFs are binary, so a Hunk review cannot show you what changed. Watch the file
+before committing it.
 
 ## License
 

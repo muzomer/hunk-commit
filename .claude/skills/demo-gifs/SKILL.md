@@ -28,7 +28,7 @@ well enough in prose, and a GIF per command rots faster than it teaches.
 | GIF | Shows | Backend | README home |
 | --- | --- | --- | --- |
 | `hero.gif` | Mark two hunks with `x`, `C`, type a summary, review reloads without them | git | under the opening paragraph, before `## Requirements` |
-| `commit.gif` | `C` end to end, including the refusal when something is already staged | git | end of `### Committing` |
+| `commit.gif` | `B` end to end: the summary dialog, then the description dialog only `B` asks for | git | end of `### Committing` |
 | `into.gif` | `F`, the picker, the squash landing immediately | **jj** | end of `### Putting hunks into an existing commit` |
 | `discard.gif` | `D`, the confirmation naming what is lost, the hunks reverting | git | end of `### Discarding` |
 
@@ -38,8 +38,14 @@ must be visible inside the frame** — the fixture sets a shell prompt naming it
 (`git-demo ~/cart>` / `jj-demo ~/cart>`) so no viewer mistakes jj's immediate
 squash for git's deferred one.
 
-No GIFs for `S` (staging is the familiar `git add -p` shape) or `B` (it is `C`
-plus one question).
+No GIF for `S` — staging is the familiar `git add -p` shape.
+
+No GIF for the refusals either. One was tried: a tape that staged a file and
+pressed `C` records as a file going into the index and then *nothing visibly
+happening*, because a refusal is a single line of status text. On screen that
+reads as a broken demo rather than a guard rail working. Refusals stay in
+prose, and `### Committing` gets `B` instead — the one command whose dialogs
+nothing else shows.
 
 ## Pipeline layout
 

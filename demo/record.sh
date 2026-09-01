@@ -22,9 +22,17 @@ done
 
 tape="${1:-hero}"
 backend=git
-[ "$tape" = "into" ] && backend=jj
+extra=()
+case "$tape" in
+  into) backend=jj ;;
+esac
 
-bun "$repo/demo/fixture.ts" --backend "$backend" --out "$work/cart" >/dev/null
+bun "$repo/demo/fixture.ts" --backend "$backend" --out "$work/cart" \
+  "${extra[@]+"${extra[@]}"}" >/dev/null
+
+# The jj tapes read this; the git ones ignore it. Exported here so the isolated
+# identity the fixture wrote is the one on screen in `F`'s commit picker.
+export JJ_CONFIG="$work/jjconfig.toml"
 
 # An isolated config is what keeps takes identical: no other extension of the
 # recording machine's is loaded (one of them collides with `X`), no update
