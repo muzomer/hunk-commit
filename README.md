@@ -4,9 +4,6 @@ Mark hunks while you review in [Hunk](https://hunk.dev), and move them without
 leaving the review — into the git index, or into a commit: a git commit, or a
 [Jujutsu](https://github.com/jj-vcs/jj) revision.
 
-Whichever you choose, **your files on disk never change** — the `git add -p`
-shape, extended to committing, and to Jujutsu, which has no index.
-
 ![Two hunks of a fix marked amber in a Hunk review, then C, then a one-line
 summary prompt, then the review reloads with those hunks gone and an unrelated
 typo left behind.](demo/hero.gif)
