@@ -13,6 +13,8 @@ import { createGitCommitBackend, findCommitBlocker } from "./src/git/commit";
 import { autosquashCommand, createGitFixupBackend } from "./src/git/fixup";
 import { listFixupTargets, type CommitChoice } from "./src/git/history";
 import { createGit, type Git } from "./src/git/repository";
+import { reviewHasUncommittedWork } from "./src/review/provenance";
+import { createMarkedPane } from "./src/ui/markedPane";
 import { createJjBackend } from "./src/jj/backend";
 import { createJj, type Jj } from "./src/jj/repository";
 import { listStagingTargets } from "./src/jj/revisions";
@@ -51,6 +53,20 @@ export default function activate(hunk: HunkExtensionAPI): void {
     highlight: ({ file }) => markHighlightsFor(file, session, hunk, contextMarks),
   });
 
+  // Closed until asked for. The pane answers a question that only gets hard on
+  // a large review — "what exactly am I about to commit?" — and a reviewer
+  // marking two hunks in one file can already see the answer in the diff.
+  hunk.registerPane({
+    id: "marked",
+    title: "Marked",
+    placement: "right",
+    // A fraction rather than a column count, so the list keeps its share of a
+    // wide terminal and still gives the diff room on a narrow one. The
+    // minimum is where a path stops being readable at all.
+    width: { preferred: 32, fraction: 0.22, min: 18, max: 48 },
+    component: createMarkedPane(session.marks),
+  });
+
   hunk.registerCommand(
     { id: "toggleHunk", title: "Mark hunk", key: "x" },
     (ctx) => {
@@ -77,6 +93,16 @@ export default function activate(hunk: HunkExtensionAPI): void {
       session.marks.toggleFile(file.id);
       reportMarks(ctx, session, file.id);
     },
+  );
+
+  // Registering a pane does not show it, and this one has no `defaultOpen`:
+  // without a key it would be unreachable. `L` for list — `M` and `m` are
+  // Hunk's own menu bar and hunk headers, and `U` stays free for unstaging.
+  // Uppercase follows the convention here: lowercase `x` marks one hunk, and
+  // the capitals act on the set.
+  hunk.registerCommand(
+    { id: "toggleMarkedPane", title: "Show what is marked", key: "L" },
+    (ctx) => ctx.panes.toggle("marked"),
   );
 
   hunk.registerCommand({ id: "clearMarks", title: "Clear marks", key: "N" }, (ctx) => {
@@ -349,15 +375,19 @@ function markHighlightsFor(
   }
 
   try {
-    return buildMarkHighlights(parseFilePatch(file.patch), mark, contextMarks).map((highlight) => ({
-      ...highlight,
-      // Amber, where the diff's own vocabulary is green, red, and neutral. A
-      // mark has to say "chosen", not "slightly lighter": the tones that only
-      // shift brightness disappear against an added line's green, and the two
-      // that carry meaning already — red for removed, near-white for the
-      // current search match — would either lie or flatten the diff's colours.
-      tone: "match" as const,
-    }));
+    // Tones come from the highlight itself, one per line, rather than being
+    // stamped on the whole set here.
+    //
+    // The lines that move take amber, where the diff's own vocabulary is
+    // green, red, and neutral: a mark has to say "chosen", and the two tones
+    // that carry meaning already — red for removed, near-white for the current
+    // search match — would either lie or flatten the diff's colours.
+    //
+    // Context takes `dim`, which the host added in API 16. Until then the only
+    // alternatives shifted brightness alone and vanished against an added
+    // line's green, so context had to borrow the amber and overstate the
+    // hunk's reach. It no longer does.
+    return buildMarkHighlights(parseFilePatch(file.patch), mark, contextMarks);
   } catch (error) {
     hunk.log(`Could not paint marks for ${file.path}: ${describe(error)}`);
     return null;
@@ -389,6 +419,44 @@ function requireSelection(ctx: ExtensionCommandContext, session: ReviewSession):
     ctx.notify(messages.nothingToActOn, "warning");
   }
   return selection;
+}
+
+/**
+ * Refuse a review that holds no uncommitted work, reporting why.
+ *
+ * The guard every command here shares: they all treat the diff on screen as
+ * work that has not landed, and Hunk will just as happily show a commit
+ * (`hunk show`) or a comparison of two revisions (`hunk diff <from> <to>`).
+ * The extension cannot ask which of those it is looking at — the API hands it
+ * `sourceLabel` and `title`, both free-form display strings — so it asks the
+ * VCS what is uncommitted instead.
+ */
+async function requireWorkingCopy(
+  ctx: ExtensionCommandContext,
+  session: ReviewSession,
+  workspace: Workspace,
+): Promise<boolean> {
+  const run =
+    workspace.kind === "jj"
+      ? createJj({ root: workspace.root }).run
+      : createGit({ root: workspace.root }).run;
+
+  const paths = session.reviewedFiles.map((file) => file.path);
+
+  try {
+    if (await reviewHasUncommittedWork(paths, workspace, run)) {
+      return true;
+    }
+  } catch (error) {
+    // A VCS that cannot answer is not evidence of anything, so this reports
+    // the failure rather than silently letting the command through — the
+    // whole point of the check is that the dangerous case looks fine.
+    ctx.notify(messages.failed(describe(error)), "error");
+    return false;
+  }
+
+  ctx.notify(messages.notWorkingCopy, "warning");
+  return false;
 }
 
 /** Resolve the workspace this review sits in, reporting when there is none. */
@@ -446,6 +514,10 @@ async function stage(
 
   const workspace = requireWorkspace(ctx);
   if (!workspace) {
+    return;
+  }
+
+  if (!(await requireWorkingCopy(ctx, session, workspace))) {
     return;
   }
 
@@ -558,6 +630,10 @@ async function discard(ctx: ExtensionCommandContext, session: ReviewSession): Pr
 
   const workspace = requireWorkspace(ctx);
   if (!workspace) {
+    return;
+  }
+
+  if (!(await requireWorkingCopy(ctx, session, workspace))) {
     return;
   }
 

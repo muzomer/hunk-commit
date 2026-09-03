@@ -4,11 +4,21 @@ import type { FileMark } from "../staging/plan";
 /** How much of a marked hunk's context lines carries the mark. */
 export type ContextMarks = "none" | "edge" | "full";
 
+/**
+ * How emphatically one painted line carries the mark.
+ *
+ * Named here rather than imported from the host so this module keeps knowing
+ * nothing about Hunk: the two values are spelled the same as the host's tones,
+ * and index.ts is where they meet its API.
+ */
+export type MarkTone = "match" | "dim";
+
 /** One painted line, in the shape Hunk's line highlighter contributes. */
 export interface MarkHighlight {
   readonly side: "old" | "new";
   readonly line: number;
   readonly range: readonly [number, number];
+  readonly tone: MarkTone;
 }
 
 /**
@@ -19,10 +29,12 @@ export interface MarkHighlight {
  *
  * Context lines are a judgement call, so they are a setting. Marking them says
  * how far the hunk reaches, which is real information — but a hunk carries up
- * to three lines of context on each side, so it also makes the marked region
- * look considerably larger than what will actually move. `"none"` is the
- * default for that reason; `"edge"` draws a thin rail down the hunk, and
- * `"full"` paints context exactly like the lines that move.
+ * to three lines of context on each side, so it also risks making the marked
+ * region look larger than what will actually move. They are painted `dim`
+ * rather than in the mark's own colour, which is what keeps that risk in
+ * check: the eye reads the amber as the change and the recessive tint as its
+ * extent, so `"edge"` draws a thin rail down the hunk and `"full"` traces the
+ * whole reach without either one competing with the lines that move.
  *
  * A context line is addressed on both sides, since it exists on both and a
  * split layout renders it twice.
@@ -61,17 +73,17 @@ export function buildMarkHighlights(
       const range = [0, Math.max(line.text.length, 1)] as const;
 
       if (line.kind === "added") {
-        highlights.push({ side: "new", line: newLine, range });
+        highlights.push({ side: "new", line: newLine, range, tone: "match" });
         newLine += 1;
       } else if (line.kind === "removed") {
-        highlights.push({ side: "old", line: oldLine, range });
+        highlights.push({ side: "old", line: oldLine, range, tone: "match" });
         oldLine += 1;
       } else {
         if (contextMarks !== "none") {
           const width = contextMarks === "edge" ? Math.min(range[1], EDGE_WIDTH) : range[1];
           const contextRange = [0, width] as const;
-          highlights.push({ side: "old", line: oldLine, range: contextRange });
-          highlights.push({ side: "new", line: newLine, range: contextRange });
+          highlights.push({ side: "old", line: oldLine, range: contextRange, tone: "dim" });
+          highlights.push({ side: "new", line: newLine, range: contextRange, tone: "dim" });
         }
         oldLine += 1;
         newLine += 1;
