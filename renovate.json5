@@ -52,18 +52,38 @@
       automerge: true,
     },
 
-    // hunkdiff is the one dependency CI cannot vouch for. It is imported only
-    // as `import type` (index.ts, src/ui/session.ts), so it is erased at compile
-    // time and never loaded at runtime — `bun test` passes identically on any
-    // version. Only `tsc --noEmit` covers it, and only for the 4 interfaces we
-    // import. It is also 0.x, where Renovate calls 0.20 -> 0.21 a "minor" even
-    // though that is breaking by convention. Green CI here means very little:
-    // read the changelog and load the extension in Hunk before merging.
+    // hunkdiff is the one dependency CI cannot vouch for. It is imported as
+    // `import type` in the extension itself (index.ts, src/ui/session.ts), so
+    // that much is erased at compile time and only `tsc --noEmit` covers it,
+    // for the 4 interfaces we name. The exception is test/manifest.test.ts,
+    // which imports HUNK_EXTENSION_API_VERSION as a *value* — that one module
+    // is really evaluated under `bun test`. Nothing else here changes
+    // behaviour with the version. It is also 0.x, where Renovate calls
+    // 0.20 -> 0.21 a "minor" even though that is breaking by convention, and
+    // where the extension API generation advances (0.20 declares 8, 0.21
+    // declares 16) and drags our stated minimum Hunk version with it. Green CI
+    // means very little: read the release notes and load the extension in Hunk
+    // before merging. The `hunkdiff-upgrade` skill is that procedure.
+    //
+    // No automerge, and deliberately no cooldown either. The global 7-day
+    // minimumReleaseAge plus schedule:weekly put this PR 7-14 days behind the
+    // release, and every one of those days is spent not reading release notes
+    // we could have read on day one. Nothing merges itself here — the bump is
+    // finished by hand on a separate branch, and this PR serves mainly as the
+    // notification that a release happened. The cost we accept: CI runs
+    // `bun install` and evaluates that one module on the day the PR opens,
+    // rather than a week later. No trustedDependencies is set, so bun does not
+    // run install scripts.
     //
     // Listed last so it overrides the devDependencies rule above.
     {
       matchPackageNames: ["hunkdiff"],
       automerge: false,
+      // null opts out of the global cooldown, which also clears
+      // internalChecksFilter "strict" — with no pending age check there is
+      // nothing left for it to suppress.
+      minimumReleaseAge: null,
+      schedule: ["at any time"],
     },
   ],
 }
