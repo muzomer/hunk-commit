@@ -8,7 +8,7 @@
     "extensions": [
       "./index.ts"
     ],
-    "apiVersion": 8
+    "apiVersion": 16
   },
   "scripts": {
     "test": "bun test",
@@ -16,7 +16,7 @@
   },
   "devDependencies": {
     "@types/bun": "^1.4.0",
-    "hunkdiff": "^0.20.0",
+    "hunkdiff": "^0.21.0",
     "typescript": "^5.9.3"
   }
 }
