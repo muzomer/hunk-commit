@@ -13,7 +13,7 @@ typo left behind.](demo/hero.gif)
 
 ## Requirements
 
-- Hunk 0.20 or newer (extension API v8)
+- Hunk 0.21 or newer (extension API v16)
 - `git`, or `jj` — whichever the repository uses
 - For jj only: a POSIX shell, which is how the selection reaches `jj`.
   The git path has no such requirement and works on Windows.
