@@ -7,6 +7,15 @@ export interface MarkedFile {
   /** Marked hunks, or every hunk when the whole file is marked. */
   readonly hunks: number;
   readonly whole: boolean;
+  /**
+   * True for the file the review cursor is in.
+   *
+   * A long marked list is read against a diff that is scrolled somewhere
+   * inside it, and without this the two have nothing in common to look at:
+   * the list says what is marked, the diff says where you are, and neither
+   * says which row of the list you are standing on.
+   */
+  readonly current: boolean;
 }
 
 /** A file of the review, as summarising the marked set needs to see it. */
@@ -31,6 +40,7 @@ export interface SummarisableFile {
 export function markedFiles(
   files: readonly SummarisableFile[],
   marks: ReadonlyMap<string, FileMark>,
+  currentFileId: string | null = null,
 ): MarkedFile[] {
   const marked: MarkedFile[] = [];
 
@@ -45,6 +55,7 @@ export function markedFiles(
       path: file.path,
       hunks: mark.kind === "whole" ? Math.max(file.hunks?.length ?? 0, 1) : mark.hunks.size,
       whole: mark.kind === "whole",
+      current: file.id === currentFileId,
     });
   }
 

@@ -18,13 +18,17 @@ describe("markedFiles", () => {
       new Map([["1", { kind: "hunks", hunks: new Set([0, 2]) }]]),
     );
 
-    expect(marked).toEqual([{ fileId: "1", path: "src/a.ts", hunks: 2, whole: false }]);
+    expect(marked).toEqual([
+      { fileId: "1", path: "src/a.ts", hunks: 2, whole: false, current: false },
+    ]);
   });
 
   test("counts a whole-file mark as every hunk of the file", () => {
     const marked = markedFiles(files, new Map([["2", { kind: "whole" }]]));
 
-    expect(marked).toEqual([{ fileId: "2", path: "src/b.ts", hunks: 2, whole: true }]);
+    expect(marked).toEqual([
+      { fileId: "2", path: "src/b.ts", hunks: 2, whole: true, current: false },
+    ]);
   });
 
   test("counts a file with no hunks as one, since it can only be marked whole", () => {
@@ -46,6 +50,31 @@ describe("markedFiles", () => {
 
   test("ignores a mark whose file left the review", () => {
     expect(markedFiles(files, new Map([["gone", { kind: "whole" }]]))).toEqual([]);
+  });
+});
+
+describe("markedFiles and the review cursor", () => {
+  const everything = new Map<string, { kind: "whole" }>([
+    ["1", { kind: "whole" }],
+    ["2", { kind: "whole" }],
+  ]);
+
+  test("marks the row for the file the cursor is in", () => {
+    const marked = markedFiles(files, everything, "2");
+
+    expect(marked.map((file) => file.current)).toEqual([false, true]);
+  });
+
+  test("marks no row when the cursor is in an unmarked file", () => {
+    // Common while marking: you moved on to read the next file and have not
+    // decided about it yet. Nothing in the list should claim to be current.
+    const marked = markedFiles(files, everything, "3");
+
+    expect(marked.some((file) => file.current)).toBe(false);
+  });
+
+  test("marks no row when there is no cursor at all", () => {
+    expect(markedFiles(files, everything).some((file) => file.current)).toBe(false);
   });
 });
 

@@ -18,13 +18,16 @@ import { fitPath, markedFiles } from "./markedSet";
  * does.
  */
 export function createMarkedPane(marks: MarkStore) {
-  return function MarkedPane({ files, width, theme }: ExtensionPaneProps) {
+  return function MarkedPane({ files, selectedFileId, width, theme }: ExtensionPaneProps) {
     const snapshot = useSyncExternalStore(
       (listener) => marks.subscribe(listener),
       () => marks.snapshot(),
     );
 
-    const marked = markedFiles(files, snapshot);
+    // The cursor comes from props rather than from a `hunk_viewed`
+    // subscription: Hunk re-renders the pane with the live selection, so an
+    // event handler would be fetching what is already in hand.
+    const marked = markedFiles(files, snapshot, selectedFileId);
     const hunks = marked.reduce((total, file) => total + file.hunks, 0);
 
     if (marked.length === 0) {
@@ -43,7 +46,11 @@ export function createMarkedPane(marks: MarkStore) {
           {marked.length === 1 ? "file" : "files"}
         </text>
         {marked.map((file) => (
-          <text key={file.fileId} fg={theme.text}>
+          <text
+            key={file.fileId}
+            fg={file.current ? theme.accent : theme.text}
+            bg={file.current ? theme.selectedHunk : undefined}
+          >
             {/* The count is what the reviewer is checking, so it leads. A
                 whole-file mark says so rather than showing a number that
                 would be indistinguishable from marking every hunk by hand. */}

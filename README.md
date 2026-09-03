@@ -58,7 +58,9 @@ reloads the review afterwards, so what you see is what is still unmoved.
 many of its hunks are in. On a small review the diff already shows you that; on
 a large one, where marks are scattered across files that are screens apart, it
 is the only way to read what `C` is about to take without scrolling back
-through all of it. It is closed until you press `L`.
+through all of it. The row for the file you are currently in is picked out, so
+a scrolled diff and the list still have something in common. It is closed until
+you press `L`.
 
 Commands are rebindable by id in Hunk's `[keybindings]` table. **The ids come
 from the folder the extension is installed into**, so an install from a
@@ -75,6 +77,12 @@ repository named `hunk-commit` gives `hunk-commit.toggleHunk`,
 context_marks = "none"  # how much of a marked hunk's context lines is marked:
                         # "none" (default), "edge" (a thin rail), "full".
 ```
+
+Marked context is tinted rather than coloured, so how much of it you can see
+depends on your theme. `"edge"` is legible almost anywhere, because its two
+columns sit against the untinted rest of the same line. `"full"` tints the
+whole line, which on a dark theme can be close to invisible — context is
+already muted there, so there is little left to recede. Try `"edge"` first.
 
 There is no configured destination: `C` always makes a new commit and `F`
 always asks which existing one, so where a hunk lands is decided in the review
