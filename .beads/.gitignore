@@ -72,9 +72,9 @@ backup/
 db.sqlite
 bd.db
 issues.jsonl
+interactions.jsonl
 
 !.gitignore
 !README.md
 !config.yaml
 !metadata.json
-!interactions.jsonl
