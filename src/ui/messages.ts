@@ -26,6 +26,10 @@ export const messages = {
 
   noWorkspace: "This review is not inside a git or Jujutsu workspace",
 
+  notWorkingCopy:
+    "Nothing in this review is uncommitted — these commands act on your working copy, " +
+    "and this looks like a review of committed history",
+
   unsupportedPlatform:
     "Staging into Jujutsu needs a POSIX shell to hand jj the selection, which this platform does not provide",
 

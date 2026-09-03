@@ -13,6 +13,7 @@ import { createGitCommitBackend, findCommitBlocker } from "./src/git/commit";
 import { autosquashCommand, createGitFixupBackend } from "./src/git/fixup";
 import { listFixupTargets, type CommitChoice } from "./src/git/history";
 import { createGit, type Git } from "./src/git/repository";
+import { reviewHasUncommittedWork } from "./src/review/provenance";
 import { createJjBackend } from "./src/jj/backend";
 import { createJj, type Jj } from "./src/jj/repository";
 import { listStagingTargets } from "./src/jj/revisions";
@@ -395,6 +396,44 @@ function requireSelection(ctx: ExtensionCommandContext, session: ReviewSession):
   return selection;
 }
 
+/**
+ * Refuse a review that holds no uncommitted work, reporting why.
+ *
+ * The guard every command here shares: they all treat the diff on screen as
+ * work that has not landed, and Hunk will just as happily show a commit
+ * (`hunk show`) or a comparison of two revisions (`hunk diff <from> <to>`).
+ * The extension cannot ask which of those it is looking at — the API hands it
+ * `sourceLabel` and `title`, both free-form display strings — so it asks the
+ * VCS what is uncommitted instead.
+ */
+async function requireWorkingCopy(
+  ctx: ExtensionCommandContext,
+  session: ReviewSession,
+  workspace: Workspace,
+): Promise<boolean> {
+  const run =
+    workspace.kind === "jj"
+      ? createJj({ root: workspace.root }).run
+      : createGit({ root: workspace.root }).run;
+
+  const paths = session.reviewedFiles.map((file) => file.path);
+
+  try {
+    if (await reviewHasUncommittedWork(paths, workspace, run)) {
+      return true;
+    }
+  } catch (error) {
+    // A VCS that cannot answer is not evidence of anything, so this reports
+    // the failure rather than silently letting the command through — the
+    // whole point of the check is that the dangerous case looks fine.
+    ctx.notify(messages.failed(describe(error)), "error");
+    return false;
+  }
+
+  ctx.notify(messages.notWorkingCopy, "warning");
+  return false;
+}
+
 /** Resolve the workspace this review sits in, reporting when there is none. */
 function requireWorkspace(ctx: ExtensionCommandContext): Workspace | null {
   const workspace = detectWorkspace(ctx.cwd);
@@ -450,6 +489,10 @@ async function stage(
 
   const workspace = requireWorkspace(ctx);
   if (!workspace) {
+    return;
+  }
+
+  if (!(await requireWorkingCopy(ctx, session, workspace))) {
     return;
   }
 
@@ -562,6 +605,10 @@ async function discard(ctx: ExtensionCommandContext, session: ReviewSession): Pr
 
   const workspace = requireWorkspace(ctx);
   if (!workspace) {
+    return;
+  }
+
+  if (!(await requireWorkingCopy(ctx, session, workspace))) {
     return;
   }
 
