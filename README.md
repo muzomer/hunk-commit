@@ -48,11 +48,10 @@ Open a working-copy review (`hunk diff`), then:
 Marked lines are painted amber in the diff — a hue the diff's own green, red,
 and neutral do not use. By default only the lines that will actually move are
 marked; `context_marks` (below) can extend that to the context lines around
-them, at the cost of making the marked region look larger than what moves,
-since a hunk carries up to three context lines on each side. Every one of these
-commands asks first — for a message, or for confirmation — names where the
-hunks are going, and reloads the review afterwards, so what you see is what is
-still unmoved.
+them, which are tinted rather than amber, so a hunk's reach stays legible
+without competing with what will move. Every one of these commands asks first —
+for a message, or for confirmation — names where the hunks are going, and
+reloads the review afterwards, so what you see is what is still unmoved.
 
 Commands are rebindable by id in Hunk's `[keybindings]` table. **The ids come
 from the folder the extension is installed into**, so an install from a

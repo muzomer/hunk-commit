@@ -349,15 +349,19 @@ function markHighlightsFor(
   }
 
   try {
-    return buildMarkHighlights(parseFilePatch(file.patch), mark, contextMarks).map((highlight) => ({
-      ...highlight,
-      // Amber, where the diff's own vocabulary is green, red, and neutral. A
-      // mark has to say "chosen", not "slightly lighter": the tones that only
-      // shift brightness disappear against an added line's green, and the two
-      // that carry meaning already — red for removed, near-white for the
-      // current search match — would either lie or flatten the diff's colours.
-      tone: "match" as const,
-    }));
+    // Tones come from the highlight itself, one per line, rather than being
+    // stamped on the whole set here.
+    //
+    // The lines that move take amber, where the diff's own vocabulary is
+    // green, red, and neutral: a mark has to say "chosen", and the two tones
+    // that carry meaning already — red for removed, near-white for the current
+    // search match — would either lie or flatten the diff's colours.
+    //
+    // Context takes `dim`, which the host added in API 16. Until then the only
+    // alternatives shifted brightness alone and vanished against an added
+    // line's green, so context had to borrow the amber and overstate the
+    // hunk's reach. It no longer does.
+    return buildMarkHighlights(parseFilePatch(file.patch), mark, contextMarks);
   } catch (error) {
     hunk.log(`Could not paint marks for ${file.path}: ${describe(error)}`);
     return null;
