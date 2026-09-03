@@ -1,0 +1,76 @@
+name: hunkdiff upgrade
+
+# Renovate's hunkdiff PR is deliberately exempt from the cooldown in
+# renovate.json5, so this branch appears on release day. It arrives with
+# package.json and bun.lock bumped and nothing else — the README's stated
+# minimum Hunk version, the declared API generation, and the demo GIFs are all
+# still describing the old Hunk. This job adds that reconciliation on top of
+# Renovate's own commit, so one PR carries the bump and everything it implies.
+#
+# `opened` and `reopened` only, never `synchronize`: this job pushes to the
+# branch it was triggered by, and synchronize would make that a loop.
+on:
+  pull_request:
+    types: [opened, reopened]
+
+permissions:
+  contents: write # push the reconciliation commit onto Renovate's branch
+  pull-requests: write # leave the summary where the reviewer will read it
+
+concurrency:
+  group: hunkdiff-upgrade-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  reconcile:
+    # Renovate branches live in this repository, not a fork, so secrets are
+    # available and the push below can reach the branch.
+    if: >-
+      github.event.pull_request.user.login == 'renovate[bot]' &&
+      contains(github.event.pull_request.title, 'hunkdiff')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The default merge ref is detached — there is nothing to push from.
+          # Full history because the skill diffs the bump against main.
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - run: bun install --frozen-lockfile
+
+      - uses: anthropics/claude-code-action@fa2b2666b747000bf42767d1f332065b375e3c8f # v1.0.214
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_args: |
+            --max-turns 40
+            --allowedTools Bash,Edit,Read,Write,Glob,Grep
+          prompt: |
+            A Renovate PR has bumped the `hunkdiff` dependency on the branch
+            already checked out. Complete it by invoking the `hunkdiff-upgrade`
+            skill in `.claude/skills/` and following it exactly.
+
+            Two adjustments to the skill's ground rules, for this run only:
+
+            - The skill says never commit or push. Here you MAY commit and push
+              to this branch, because that is the whole point of this job. All
+              its other rules stand — in particular, never tick the rebase
+              checkbox, and never claim a release note you did not read.
+            - `jj` is NOT installed in this job, so the jj-backed test suites
+              self-skip. Do not report a green `bun test` as full coverage. The
+              main CI job runs the full suite with jj on this same commit;
+              defer to it and say so.
+
+            Make one commit per concern, Conventional Commits style
+            (`docs:` for README claims, `chore(deps):` for anything about the
+            bump itself). Push them to this branch.
+
+            Then post the skill's handoff report as a PR comment, so the
+            reviewer reads it next to the diff. If a demo GIF is stale, say
+            which and why — do NOT record it, since VHS and a terminal are not
+            available here.
+
+            If the release notes cannot be read, push nothing and say so.
