@@ -11,6 +11,19 @@ import type { FileMark } from "../staging/plan";
  */
 export class MarkStore {
   private readonly marks = new Map<string, FileMark>();
+  private readonly listeners = new Set<() => void>();
+
+  /**
+   * The marks as one immutable value, stable until they change.
+   *
+   * Two callers want different things from this and both are served by the
+   * same object. A command captures the marks before opening a dialog and
+   * needs them not to move underneath it; the pane re-reads them constantly
+   * and needs to know cheaply whether anything happened. Rebuilding the map
+   * on every read would break the second — a fresh object every time reads as
+   * a change every time — so it is rebuilt only when a mark actually moves.
+   */
+  private cached: ReadonlyMap<string, FileMark> = new Map();
 
   /** Add or remove one hunk. Marking a hunk on a whole-file mark narrows it. */
   toggleHunk(fileId: string, hunkIndex: number, hunkCount: number): void {
@@ -41,6 +54,7 @@ export class MarkStore {
 
   clear(): void {
     this.marks.clear();
+    this.changed();
   }
 
   markFor(fileId: string): FileMark | undefined {
@@ -62,7 +76,13 @@ export class MarkStore {
 
   /** The marks, keyed by file id, for handing to staging. */
   snapshot(): ReadonlyMap<string, FileMark> {
-    return new Map(this.marks);
+    return this.cached;
+  }
+
+  /** Watch for changes, for a surface that paints the marked set. */
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
   }
 
   private set(fileId: string, mark: FileMark | undefined): void {
@@ -70,6 +90,16 @@ export class MarkStore {
       this.marks.set(fileId, mark);
     } else {
       this.marks.delete(fileId);
+    }
+
+    this.changed();
+  }
+
+  private changed(): void {
+    this.cached = new Map(this.marks);
+
+    for (const listener of this.listeners) {
+      listener();
     }
   }
 }

@@ -60,3 +60,47 @@ describe("MarkStore", () => {
     expect(marks.isEmpty).toBe(true);
   });
 });
+
+describe("MarkStore subscriptions", () => {
+  test("notifies a listener when a mark changes", () => {
+    const store = new MarkStore();
+    let calls = 0;
+    store.subscribe(() => {
+      calls += 1;
+    });
+
+    store.toggleHunk("a", 0, 3);
+    store.toggleFile("b");
+    store.clear();
+
+    expect(calls).toBe(3);
+  });
+
+  test("hands back the same snapshot until a mark moves", () => {
+    // What useSyncExternalStore needs: a fresh object on every read would be
+    // an infinite render, and a stale one after a change would never repaint.
+    const store = new MarkStore();
+    const before = store.snapshot();
+
+    expect(store.snapshot()).toBe(before);
+
+    store.toggleHunk("a", 0, 3);
+
+    expect(store.snapshot()).not.toBe(before);
+    expect(store.snapshot()).toBe(store.snapshot());
+  });
+
+  test("stops notifying once unsubscribed", () => {
+    const store = new MarkStore();
+    let calls = 0;
+    const unsubscribe = store.subscribe(() => {
+      calls += 1;
+    });
+
+    store.toggleFile("a");
+    unsubscribe();
+    store.toggleFile("b");
+
+    expect(calls).toBe(1);
+  });
+});

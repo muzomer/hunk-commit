@@ -14,6 +14,7 @@ import { autosquashCommand, createGitFixupBackend } from "./src/git/fixup";
 import { listFixupTargets, type CommitChoice } from "./src/git/history";
 import { createGit, type Git } from "./src/git/repository";
 import { reviewHasUncommittedWork } from "./src/review/provenance";
+import { createMarkedPane } from "./src/ui/markedPane";
 import { createJjBackend } from "./src/jj/backend";
 import { createJj, type Jj } from "./src/jj/repository";
 import { listStagingTargets } from "./src/jj/revisions";
@@ -52,6 +53,20 @@ export default function activate(hunk: HunkExtensionAPI): void {
     highlight: ({ file }) => markHighlightsFor(file, session, hunk, contextMarks),
   });
 
+  // Closed until asked for. The pane answers a question that only gets hard on
+  // a large review — "what exactly am I about to commit?" — and a reviewer
+  // marking two hunks in one file can already see the answer in the diff.
+  hunk.registerPane({
+    id: "marked",
+    title: "Marked",
+    placement: "right",
+    // A fraction rather than a column count, so the list keeps its share of a
+    // wide terminal and still gives the diff room on a narrow one. The
+    // minimum is where a path stops being readable at all.
+    width: { preferred: 32, fraction: 0.22, min: 18, max: 48 },
+    component: createMarkedPane(session.marks),
+  });
+
   hunk.registerCommand(
     { id: "toggleHunk", title: "Mark hunk", key: "x" },
     (ctx) => {
@@ -78,6 +93,16 @@ export default function activate(hunk: HunkExtensionAPI): void {
       session.marks.toggleFile(file.id);
       reportMarks(ctx, session, file.id);
     },
+  );
+
+  // Registering a pane does not show it, and this one has no `defaultOpen`:
+  // without a key it would be unreachable. `L` for list — `M` and `m` are
+  // Hunk's own menu bar and hunk headers, and `U` stays free for unstaging.
+  // Uppercase follows the convention here: lowercase `x` marks one hunk, and
+  // the capitals act on the set.
+  hunk.registerCommand(
+    { id: "toggleMarkedPane", title: "Show what is marked", key: "L" },
+    (ctx) => ctx.panes.toggle("marked"),
   );
 
   hunk.registerCommand({ id: "clearMarks", title: "Clear marks", key: "N" }, (ctx) => {

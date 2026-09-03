@@ -44,6 +44,7 @@ Open a working-copy review (`hunk diff`), then:
 | `B` | Commit them with a description as well — one more question                                |
 | `F` | Add the marked hunks to a specific commit, selected from a list                           |
 | `D` | Discard the marked hunks, or the one under the cursor — reverts them in your working copy |
+| `L` | Show what is marked, in a pane beside the review                                          |
 
 Marked lines are painted amber in the diff — a hue the diff's own green, red,
 and neutral do not use. By default only the lines that will actually move are
@@ -53,12 +54,18 @@ without competing with what will move. Every one of these commands asks first �
 for a message, or for confirmation — names where the hunks are going, and
 reloads the review afterwards, so what you see is what is still unmoved.
 
+`L` opens a list of the marked set beside the diff — every marked file and how
+many of its hunks are in. On a small review the diff already shows you that; on
+a large one, where marks are scattered across files that are screens apart, it
+is the only way to read what `C` is about to take without scrolling back
+through all of it. It is closed until you press `L`.
+
 Commands are rebindable by id in Hunk's `[keybindings]` table. **The ids come
 from the folder the extension is installed into**, so an install from a
 repository named `hunk-commit` gives `hunk-commit.toggleHunk`,
 `hunk-commit.toggleFile`, `hunk-commit.clearMarks`, `hunk-commit.stage`,
-`hunk-commit.commit`, `hunk-commit.commitWithBody`, `hunk-commit.into`, and
-`hunk-commit.discard`.
+`hunk-commit.commit`, `hunk-commit.commitWithBody`, `hunk-commit.into`,
+`hunk-commit.discard`, and `hunk-commit.toggleMarkedPane`.
 
 ### Config
 
