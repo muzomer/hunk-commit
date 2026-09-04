@@ -10,7 +10,7 @@ typo left behind.](demo/hero.gif)
 
 ## Requirements
 
-- Hunk 0.21 or newer (extension API v16)
+- Hunk 0.21 or newer
 - `git`, or `jj` — whichever the repository uses
 - For jj only: a POSIX shell, which is how the selection reaches `jj`
 
