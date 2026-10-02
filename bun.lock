@@ -7,7 +7,7 @@
       "devDependencies": {
         "@types/bun": "^1.4.0",
         "@types/react": "^19.2.18",
-        "hunkdiff": "^0.21.0",
+        "hunkdiff": "^0.23.0",
         "typescript": "^5.9.3",
       },
     },
@@ -57,17 +57,17 @@
 
     "get-east-asian-width": ["get-east-asian-width@1.6.0", "", {}, "sha512-QRbvDIbx6YklUe6RxeTeleMR0yv3cYH6PsPZHcnVn7xv7zO1BHN8r0XETu8n6Ye3Q+ahtSarc3WgtNWmehIBfA=="],
 
-    "hunkdiff": ["hunkdiff@0.21.0", "", { "dependencies": { "chokidar": "^4.0.3", "commander": "^14.0.3", "diff": "^8.0.3", "get-east-asian-width": "^1.5.0", "shell-quote": "1.9.0", "string-width": "^8.2.1", "zod": "~4.4.3" }, "optionalDependencies": { "hunkdiff-darwin-arm64": "0.21.0", "hunkdiff-darwin-x64": "0.21.0", "hunkdiff-linux-arm64": "0.21.0", "hunkdiff-linux-x64": "0.21.0", "hunkdiff-windows-x64": "0.21.0" }, "peerDependencies": { "@opentui/core": "^0.5.6", "@opentui/react": "^0.5.6", "@pierre/diffs": "1.3.5", "react": "^19.2.4" }, "optionalPeers": ["@pierre/diffs"], "bin": { "hunk": "bin/hunk.cjs", "hunkdiff": "bin/hunk.cjs" } }, "sha512-s/+6G2s2T0sCxdvtRgCxOKtfzhAzXq+1lpFyKwgR8FQhYBxN7vU8UIlrWO6KP1u5JBwtFHaWLk3UFKFnveKt7g=="],
+    "hunkdiff": ["hunkdiff@0.23.0", "", { "dependencies": { "chokidar": "^4.0.3", "commander": "^14.0.3", "diff": "^8.0.3", "get-east-asian-width": "^1.5.0", "shell-quote": "1.9.0", "string-width": "^8.2.1", "zod": "~4.4.3" }, "optionalDependencies": { "hunkdiff-darwin-arm64": "0.23.0", "hunkdiff-darwin-x64": "0.23.0", "hunkdiff-linux-arm64": "0.23.0", "hunkdiff-linux-x64": "0.23.0", "hunkdiff-windows-x64": "0.23.0" }, "peerDependencies": { "@opentui/core": "^0.5.6", "@opentui/react": "^0.5.6", "@pierre/diffs": "1.3.5", "react": "^19.2.4" }, "optionalPeers": ["@pierre/diffs"], "bin": { "hunk": "bin/hunk.cjs", "hunkdiff": "bin/hunk.cjs" } }, "sha512-YQL6N3OC6VFW9vqPlBr2HyCM5olYiVLOjPmkL+JhCeHfJKL4hx7r8Ux3d211T+Oj9e3hkaZNToveTvFpNrIeNQ=="],
 
-    "hunkdiff-darwin-arm64": ["hunkdiff-darwin-arm64@0.21.0", "", { "os": "darwin", "cpu": "arm64", "bin": { "hunk": "bin/hunk" } }, "sha512-LygRbyHDqpCzOaotS+A2gmRWxtgXGC8Q9ZkxmWH229KWQTp4SCjUBcR7IwXJj7jjsa8ycn5J/7RHsrLM0VeKSA=="],
+    "hunkdiff-darwin-arm64": ["hunkdiff-darwin-arm64@0.23.0", "", { "os": "darwin", "cpu": "arm64", "bin": { "hunk": "bin/hunk" } }, "sha512-2r7uwoOPzEblFD+FrwMkr2a48QPAbMG7dTDYUOJoMch9V1+IwBgRTox0+uR2ZkLzQNuI9o5D5JYL+P4dzf9tbg=="],
 
-    "hunkdiff-darwin-x64": ["hunkdiff-darwin-x64@0.21.0", "", { "os": "darwin", "cpu": "x64", "bin": { "hunk": "bin/hunk" } }, "sha512-t1q5L3qKDvhxRjjLRO9v6p7SF241LRntFcgTVz+WVd1caQqnmbEFe0PEeA4lJxGhZRKsO4NYLv7vj+njimlvKw=="],
+    "hunkdiff-darwin-x64": ["hunkdiff-darwin-x64@0.23.0", "", { "os": "darwin", "cpu": "x64", "bin": { "hunk": "bin/hunk" } }, "sha512-Mn89kHTDsfSDvGIU5uSmQOFy89+j4RgGVQ/Rgjv1ABNAgnwuc3JqrmiHeX8+c34DNc/z0c+FxYE3s2rnI48kHg=="],
 
-    "hunkdiff-linux-arm64": ["hunkdiff-linux-arm64@0.21.0", "", { "os": "linux", "cpu": "arm64", "bin": { "hunk": "bin/hunk" } }, "sha512-+r/HOb9KCapDZ89ON/ucikDyt7YWjfG79abZbB47U9+8Qu6vZdWzS/H/gXzjcsufBKrFluSpI0wV9BrbHzzy9Q=="],
+    "hunkdiff-linux-arm64": ["hunkdiff-linux-arm64@0.23.0", "", { "os": "linux", "cpu": "arm64", "bin": { "hunk": "bin/hunk" } }, "sha512-jzMJ0oxccBRJmkkCulC6EBUCAzR5CC1T+uWWKFCYNyk37jJeK/bJQp3Kn+laIWLSFuwFcIAqeCi3cyufTFbckA=="],
 
-    "hunkdiff-linux-x64": ["hunkdiff-linux-x64@0.21.0", "", { "os": "linux", "cpu": "x64", "bin": { "hunk": "bin/hunk" } }, "sha512-kzlCzt5vXp14XdbCfU1Q1weNtDjIq6B4pwpsIya+UVk7yvqWmiCzOuEG4oai371u/IJl9159j3BfSYzaC/SS1Q=="],
+    "hunkdiff-linux-x64": ["hunkdiff-linux-x64@0.23.0", "", { "os": "linux", "cpu": "x64", "bin": { "hunk": "bin/hunk" } }, "sha512-glBJemvAsaH5C+jN9BUMPzMEL49yRXAwxOsgTTdbwiuLp1ddOjZLG78z0F1+K5x/qdovk062LZcOSk95naT6Mw=="],
 
-    "hunkdiff-windows-x64": ["hunkdiff-windows-x64@0.21.0", "", { "os": "win32", "cpu": "x64", "bin": { "hunk": "bin/hunk.exe" } }, "sha512-mfUHj+Sy60isbgur/o7H350AEFgttGn4OnQHUFmfIJASbPecO4AWIePDKyyJnVzCXShPAwo188aKsJAuxWiAwg=="],
+    "hunkdiff-windows-x64": ["hunkdiff-windows-x64@0.23.0", "", { "os": "win32", "cpu": "x64", "bin": { "hunk": "bin/hunk.exe" } }, "sha512-zibsI3LtsjB/f/jYKULJpHbEMdYzSYA+zIrlf+iXe1jk0qFtbLcYPugIl3u3kLChFjs4zHfP2DrBdZmoM1L+mQ=="],
 
     "marked": ["marked@17.0.1", "", { "bin": { "marked": "bin/marked.js" } }, "sha512-boeBdiS0ghpWcSwoNm/jJBwdpFaMnZWRzjA6SkUMYb40SVaN1x7mmfGKp0jvexGcx+7y2La5zRZsYFZI6Qpypg=="],
 
